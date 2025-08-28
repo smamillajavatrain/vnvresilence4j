@@ -1,0 +1,1598 @@
+0) Prereqs (quick)
+
+Gremlin agent installed on your application hosts or k8s pods (you usually don’t install it on a managed DB like RDS/Azure DB).
+
+Know your DB endpoint & port (e.g., postgres.mycorp:5432, oracle:1521, mysql:3306).
+
+App exposes a simple DB-touching health endpoint (e.g., /actuator/health/db or a tiny “SELECT 1” API).
+Tip (Spring Boot): create /chaos/pingDb that runs SELECT 1, returns 200 in <500ms.
+
+Resilience4j Retry enabled for DB calls (you already have config—great) and Micrometer → Prometheus enabled to see retry metrics.
+
+1) Create the Scenario (UI steps)
+
+Scenarios → New Scenario (matches your first screenshot).
+
+Name: DB-Transient-Resilience-Validation
+Description: “Simulate network issues to DB to validate Resilience4j Retry.”
+
+Test Result rule: choose Fail if health checks go into alarm (so Gremlin will halt if things look bad).
+
+2) Add Health Checks (guardrails)
+
+Click Add Health Check and add two checks:
+
+A) HTTP health check (functional)
+
+Type: HTTP(S) Check
+
+URL: your app’s small DB endpoint (e.g., https://app.dev/chaos/pingDb)
+
+Method: GET
+
+Success criteria: HTTP 200 and latency < 1s (set your threshold).
+
+Purpose: if the app can’t talk to DB or retries don’t recover, this will alarm and auto-halt.
+
+B) Process/Workload check (liveness)
+
+Type: Kubernetes Workload (or Process on VM)
+
+Target: the application deployment/pod or process.
+
+Purpose: abort if the service dies or restarts excessively.
+
+Optional: If you integrated Prometheus into Gremlin, add a Metric Alarm for
+resilience4j_retry_calls{kind="failed_without_retry", name="db"} or a high error rate on your HTTP 5xx.
+
+3) Choose Targets (blast radius)
+
+In Ordered Nodes → Add → (Kubernetes/Hosts):
+
+Select only the application pods/hosts that call the DB (not the DB itself).
+
+Start small: 1 pod (or 10–20% of replicas).
+
+Concurrency: 1. Duration safety: short (e.g., 60–120 sec).
+
+4) Add Attack Steps (the fun part)
+
+Click Add → Attack and configure these steps. Run them one-by-one (separate steps) or in a sequence.
+
+Step 1 — Network Blackhole (simulate total loss)
+
+Category: Network → Blackhole
+
+Direction: Outbound
+
+Destination host: your DB hostname/IP
+
+Port: DB port (5432/3306/1521, etc.)
+
+Length: 60s
+
+Expected app errors:
+
+SQLTransientConnectionException, CannotCreateTransactionException
+
+PSQLException: Connection timed out, ConnectException
+
+What it proves: retries + backoff should eventually succeed once traffic resumes.
+
+Step 2 — Network Latency (simulate slow DB)
+
+Category: Network → Latency
+
+Direction: Outbound
+
+Destination host/port: the DB
+
+Latency: 2000 ms, Jitter: ±500 ms
+
+Length: 120s
+
+Expected errors:
+
+SQLTimeoutException, QueryTimeoutException, TransactionTimedOutException
+
+What it proves: timeouts trigger Retry, and successful calls appear as successful_with_retry.
+
+Step 3 — Network Packet Loss (flaky network)
+
+Category: Network → Packet Loss
+
+Direction: Outbound
+
+Destination: DB host/port
+
+Loss: 50%
+
+Length: 120s
+
+Expected errors:
+
+Read timed out, intermittent SQLTransientConnectionException
+
+What it proves: partial failures cause a mix of retries/success.
+
+You can stop after any single step; they are independent transient patterns commonly seen in prod.
+
+Halt behavior: Ensure “Halt attack if a health check alarms” is enabled so Gremlin auto-rolls back.
+
+5) Save & Run
+
+Click Save Scenario.
+
+Click Run → select the exact targets (1 pod) → Start.
+
+Watch the Health checks panel; if they alarm, Gremlin will end the step early.
+
+6) What to look for (validation)
+Logs
+
+Resilience4j should log attempts like:
+Retry 'db' attempt 1...n and the underlying exceptions you’ve whitelisted:
+
+SQLTransientException, SQLRecoverableException
+
+CannotCreateTransactionException
+
+PSQLException, TransactionTimedOutException
+
+etc. (as in your third screenshot)
+
+Prometheus / Grafana
+
+Look at these Micrometer metrics during each step:
+
+resilience4j_retry_calls{ name="db", kind="successful_with_retry" }
+
+resilience4j_retry_calls{ name="db", kind="failed_with_retry" }
+
+resilience4j_retry_calls{ name="db", kind="failed_without_retry" }
+
+Latency and error-rate panels for your DB-touching endpoint.
+
+Pass criteria (example):
+
+Blackhole: during the 60s outage, calls fail_with_retry, and recover automatically within one retry window after attack ends; health checks stay green or recover within X seconds.
+
+Latency: some calls successful_with_retry and overall error rate stays under SLA.
+
+Packet loss: similar mixed behavior with retries visible; no app crash/restart loops.
+
+7) Spring Boot knobs (helpful while testing)
+
+Keep timeouts tight to make failures observable:
+
+JDBC/Hikari: spring.datasource.hikari.connection-timeout=1000
+
+JPA: spring.jpa.properties.hibernate.jdbc.timeout=1
+
+Resilience4j (YAML example if you’re not using custom beans):
+
+resilience4j:
+  retry:
+    instances:
+      db:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - java.sql.SQLTransientException
+          - java.sql.SQLRecoverableException
+          - org.springframework.transaction.CannotCreateTransactionException
+          - org.springframework.transaction.TransactionTimedOutException
+          - org.postgresql.util.PSQLException
+
+
+Add a tiny controller for /chaos/pingDb that does SELECT 1 via your usual repo/service.
+
+8) Safety & next steps
+
+Always start in non-prod and with one pod.
+
+Keep short durations and enable auto-halt.
+
+After each run, open What Ran in Gremlin to record timings and outcomes, and capture Grafana screenshots for your runbook.
+
+When comfortable, expand blast radius (2 pods, then 25%, etc.).
+
+1. Prepare Your Spring Boot App
+
+We need a simple endpoint that always hits Oracle so that health checks + metrics show failures clearly.
+
+(A) JDBC config
+
+Tighten timeouts so transient failures show up quickly:
+
+# application.properties
+spring.datasource.url=jdbc:oracle:thin:@//oraclehost:1521/ORCL
+spring.datasource.username=appuser
+spring.datasource.password=apppass
+
+# Important: set short timeouts to force observable retries
+spring.datasource.hikari.connection-timeout=1000    # 1 sec
+spring.jpa.properties.javax.persistence.query.timeout=1000
+spring.jpa.properties.hibernate.jdbc.timeout=1
+
+(B) Controller endpoint /chaos/pingDb
+@RestController
+@RequestMapping("/chaos")
+public class ChaosController {
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @GetMapping("/pingDb")
+    public ResponseEntity<String> pingDb() {
+        try {
+            String result = jdbcTemplate.queryForObject("SELECT 'OK' FROM dual", String.class);
+            return ResponseEntity.ok("DB Response: " + result);
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("DB Failure: " + ex.getMessage());
+        }
+    }
+}
+
+
+This ensures each request hits Oracle.
+
+(C) Resilience4j Retry config (Oracle exceptions)
+
+Extend your bean to explicitly cover Oracle transient exceptions:
+
+.retryExceptions(
+    SQLTransientException.class,
+    SQLRecoverableException.class,
+    SQLTimeoutException.class,            // common Oracle timeout
+    oracle.net.ns.NetException.class,     // Oracle network exceptions
+    CannotCreateTransactionException.class,
+    TransactionTimedOutException.class,
+    PSQLException.class // if Postgres also used, can remove for Oracle-only
+)
+
+🔹 2. Prometheus + Micrometer Setup
+
+Add Prometheus starter:
+
+<dependency>
+  <groupId>io.micrometer</groupId>
+  <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+
+
+Expose Prometheus endpoint:
+
+management.endpoints.web.exposure.include=health,info,metrics,prometheus
+
+
+Metrics of interest:
+
+resilience4j_retry_calls{ name="db", kind="successful_with_retry" }
+
+resilience4j_retry_calls{ name="db", kind="failed_with_retry" }
+
+resilience4j_retry_calls{ name="db", kind="failed_without_retry" }
+
+http_server_requests_seconds_count{uri="/chaos/pingDb"}
+
+🔹 3. Create Gremlin Scenario (Browser UI)
+Step 1 – New Scenario
+
+Go to Scenarios → New Scenario
+
+Name: Oracle-DB-Transient-Test
+
+Description: “Simulate network errors between app and Oracle to validate retries.”
+
+Step 2 – Health Checks
+
+HTTP Health Check:
+
+URL → http://<app-host>:8080/chaos/pingDb
+
+Success = HTTP 200 within 1s
+
+Process Check: application JVM process or k8s pod
+
+Step 3 – Target Hosts
+
+Select app servers (not Oracle DB host).
+We want to break app ↔ DB path.
+
+Step 4 – Add Attacks
+
+Blackhole
+
+Attack → Network → Blackhole
+
+Outbound traffic
+
+Destination = oraclehost (IP/hostname)
+
+Port = 1521
+
+Duration = 60s
+
+Latency
+
+Attack → Network → Latency
+
+Destination = oraclehost:1521
+
+Delay = 2000ms, Jitter = 500ms
+
+Duration = 120s
+
+Packet Loss
+
+Attack → Network → Packet Loss
+
+Destination = oraclehost:1521
+
+Loss = 50%
+
+Duration = 120s
+
+Enable “Halt attack if health check alarms”.
+
+🔹 4. Run & Observe
+
+Run scenario from Gremlin browser.
+
+During attack, call repeatedly:
+
+curl http://<app-host>:8080/chaos/pingDb
+
+
+Expect:
+
+Blackhole → DB unreachable → SQLRecoverableException, retries logged, service recovers after unblock.
+
+Latency → SQLTimeoutException, retries kick in.
+
+Packet Loss → intermittent failures, some successful_with_retry.
+
+🔹 5. Validate in Grafana
+
+Dashboards to watch:
+
+Retry metrics
+
+sum(increase(resilience4j_retry_calls{ name="db"}[1m])) by (kind)
+
+
+Expect failed_with_retry spikes during outage
+
+successful_with_retry once DB recovers
+
+PingDb endpoint
+
+rate(http_server_requests_seconds_count{uri="/chaos/pingDb"}[1m])
+
+
+Should show dips/errors during chaos, recovery after
+
+Latency panel
+
+http_server_requests_seconds_sum{uri="/chaos/pingDb"} ÷ http_server_requests_seconds_count
+
+🔹 6. Pass Criteria
+
+
+Health check recovers automatically after each attack
+Retry metrics show retries happening
+Application stays alive (no crash/restart loops)
+Errors contained within SLA (e.g., <5% over 5 min)
+
+Grafana Dashboard JSON (Resilience4j DB Chaos Validation)
+{
+  "id": null,
+  "title": "Oracle DB Resilience Validation",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "PingDb Success Rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=\"/chaos/pingDb\",status!~\"5..\"}[1m])) / sum(rate(http_server_requests_seconds_count{uri=\"/chaos/pingDb\"}[1m]))",
+          "legendFormat": "success rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeSeries",
+      "title": "Retry Calls (by kind)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(resilience4j_retry_calls{ name=\"db\" }[1m])) by (kind)",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "type": "timeSeries",
+      "title": "PingDb Request Latency",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(http_server_requests_seconds_sum{uri=\"/chaos/pingDb\"}[1m]) / rate(http_server_requests_seconds_count{uri=\"/chaos/pingDb\"}[1m])",
+          "legendFormat": "latency"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "type": "timeSeries",
+      "title": "PingDb Error Rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=\"/chaos/pingDb\",status=~\"5..\"}[1m]))",
+          "legendFormat": "errors"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    }
+  ]
+}
+
+What This Dashboard Shows
+
+PingDb Success Rate (Stat Panel)
+
+% of successful calls to /chaos/pingDb.
+
+Turns red if <90%, orange between 90–95%, green above 95%.
+
+Retry Calls (by kind)
+
+From resilience4j_retry_calls{name="db"} metric.
+
+Lines for successful_with_retry, failed_with_retry, failed_without_retry.
+
+Expect spikes during Gremlin attack.
+
+PingDb Request Latency
+
+Avg latency per second.
+
+Expect jump during Latency attack.
+
+PingDb Error Rate
+
+Count of 5xx responses from /chaos/pingDb.
+
+Expect spike during Blackhole/Packet Loss chaos.
+
+How to Use
+
+Copy JSON → Grafana → + → Import → Paste JSON
+
+Select your Prometheus datasource.
+
+Save as “Oracle DB Resilience Validation”.
+
+Run Gremlin Scenario (Blackhole, Latency, Packet Loss).
+
+Watch panels update in real time.
+
+
+Runbook: Oracle DB Transient Failure Validation
+🔹 Pre-checks
+
+Spring Boot app running with /chaos/pingDb endpoint (executes SELECT 'OK' FROM dual).
+
+Prometheus scraping app metrics.
+
+Grafana dashboard “Oracle DB Resilience Validation” imported.
+
+Resilience4j Retry config active for Oracle transient exceptions.
+
+Gremlin agent installed on app hosts (Linux) (not DB host).
+
+Blackhole Attack (simulate DB unreachability)
+
+Gremlin Setup
+
+Attack → Network → Blackhole
+
+Direction: Outbound
+
+Destination: oraclehost:1521
+
+Duration: 60 sec
+
+Expected Grafana Behavior
+
+ PingDb Success Rate → drops to 0% during attack.
+
+ Retry Calls (by kind) → spike in failed_with_retry.
+
+ PingDb Error Rate → increases sharply (5xx responses).
+
+ After attack ends: success rate returns to ~100%, retries stabilize.
+
+Pass Criteria
+
+Application does not crash.
+
+Retries visible in metrics.
+
+Recovery occurs automatically after network restores.
+
+Latency Attack (simulate slow DB responses)
+
+Gremlin Setup
+
+Attack → Network → Latency
+
+Destination: oraclehost:1521
+
+Delay: 2000 ms, Jitter: ±500 ms
+
+Duration: 120 sec
+
+Expected Grafana Behavior
+
+ PingDb Request Latency → jumps to ~2–2.5s avg.
+
+ Retry Calls → show mix of successful_with_retry and failed_with_retry.
+
+ PingDb Success Rate → may dip below 95% (some calls timeout).
+
+ Error Rate → some 5xx, but not total failure.
+
+Pass Criteria
+
+Some calls succeed after retries.
+
+Latency spike is observable.
+
+Service remains responsive (not fully down).
+
+Packet Loss Attack (simulate flaky network)
+
+Gremlin Setup
+
+Attack → Network → Packet Loss
+
+Destination: oraclehost:1521
+
+Loss: 50%
+
+Duration: 120 sec
+
+Expected Grafana Behavior
+
+ PingDb Success Rate → fluctuates between 40–70%.
+
+ Retry Calls → higher successful_with_retry count (because some retries succeed).
+
+ Error Rate → intermittent spikes.
+
+ Latency → increases slightly due to retries.
+
+Pass Criteria
+
+System survives intermittent failures.
+
+Retries help maintain partial success.
+
+Error spikes visible but contained.
+
+Post-Attack Verification
+
+After each Gremlin step ends:
+
+ Grafana panels return to normal (Success Rate ~100%, Error Rate ~0).
+
+ Retry metrics stabilize (no runaway retries).
+
+ /chaos/pingDb responds OK consistently.
+
+ Success = Resilience Confirmed
+
+Blackhole → Retries triggered, app recovers when DB reachable.
+
+Latency → Retries triggered, some succeed, app degrades gracefully.
+
+Packet Loss → Mixed failures/retries, app remains partially available.
+
+Mapping: Gremlin Chaos → Oracle Exceptions
+1️⃣ Blackhole Attack (DB unreachable / dropped connections)
+
+Gremlin Action: Block outbound traffic to Oracle (1521).
+
+App Symptoms:
+
+No DB connection established.
+
+All queries fail immediately.
+
+Likely Exceptions in Logs:
+
+java.sql.SQLRecoverableException: IO Error: The Network Adapter could not establish the connection
+
+org.springframework.transaction.CannotCreateTransactionException
+
+org.postgresql.util.PSQLException: Connection refused (if Postgres; for Oracle, similar network errors)
+
+Resilience4j Metric Impact:
+
+High failed_with_retry count.
+
+Success rate → 0% until network restored.
+
+2️⃣ Latency Attack (DB very slow)
+
+Gremlin Action: Add 2–3s network delay with jitter.
+
+App Symptoms:
+
+Queries timeout or exceed transaction timeout.
+
+Some retries succeed.
+
+Likely Exceptions in Logs:
+
+java.sql.SQLTransientException: ORA-01013: user requested cancel of current operation
+
+org.springframework.transaction.TransactionTimedOutException
+
+org.springframework.transaction.TransactionSystemException: Transaction rolled back because it has been marked as rollback-only
+
+Resilience4j Metric Impact:
+
+Spike in successful_with_retry (some retries succeed).
+
+Latency chart increases sharply.
+
+Error rate increases, but not total failure.
+
+3️⃣ Packet Loss Attack (flaky network, intermittent failures)
+
+Gremlin Action: Drop ~50% of packets to Oracle.
+
+App Symptoms:
+
+Some queries succeed, others fail randomly.
+
+App keeps retrying, intermittent errors in logs.
+
+Likely Exceptions in Logs:
+
+java.sql.SQLTransientConnectionException
+
+org.springframework.transaction.CannotCreateTransactionException
+
+org.springframework.dao.RecoverableDataAccessException
+
+Occasional PSQLException or SQLRecoverableException depending on how connection breaks.
+
+Resilience4j Metric Impact:
+
+Both successful_with_retry and failed_with_retry increase.
+
+Success rate fluctuates (40–70%).
+
+Error spikes visible but not constant.
+
+Gremlin Chaos	Oracle Exceptions Seen	Metrics Impact
+Blackhole (DB unreachable)	SQLRecoverableException, CannotCreateTransactionException, PSQLException	0% success, retries fail
+Latency (slow DB)	SQLTransientException, TransactionTimedOutException, TransactionSystemException	High latency, mix of retry success/fail
+Packet Loss (flaky DB)	SQLTransientConnectionException, RecoverableDataAccessException, CannotCreateTransactionException	Success fluctuates, retry spikes
+
+Log Correlation Checklist – Oracle DB Chaos Validation
+
+1. Prepare Logging
+
+Ensure your app logs at least WARN/ERROR level for SQL & transaction errors.
+
+For clarity, log the Resilience4j retry events too (e.g., using RetryEventPublisher).
+
+Example in application.properties:
+
+logging.level.org.springframework.jdbc=DEBUG
+logging.level.org.springframework.transaction=DEBUG
+logging.level.io.github.resilience4j.retry=DEBUG
+
+Start Log Tail
+
+On your app host(s), run:
+
+tail -f /var/log/app/app.log | grep -E "SQL|Transaction|Recoverable|Retry"
+
+Or if running in Kubernetes:
+
+kubectl logs -f <pod-name> | grep -E "SQL|Transaction|Recoverable|Retry"
+
+Run Gremlin Attack & Correlate
+✅ Blackhole Test
+
+Run Network → Blackhole (60s).
+
+Logs (expect):
+
+SQLRecoverableException: IO Error: The Network Adapter could not establish the connection
+
+CannotCreateTransactionException: Could not open JDBC Connection
+
+Resilience4j: Retry 'db' attempt 1/3 failed with ...
+
+Grafana (expect):
+
+Success Rate = 0%
+
+Retry Calls → failed_with_retry ↑
+
+Error Rate → spike
+
+Latency Test
+
+Run Network → Latency (2000ms, jitter 500ms, 120s).
+
+Logs (expect):
+
+SQLTransientException: ORA-01013: user requested cancel of current operation
+
+TransactionTimedOutException
+
+Resilience4j: multiple retries, some succeeding
+
+Grafana (expect):
+
+Latency panel → ~2–3s avg
+
+Retry Calls → successful_with_retry + failed_with_retry ↑
+
+Success Rate dips (<95%), but not 0%
+
+Packet Loss Test
+
+Run Network → Packet Loss (50%, 120s).
+
+Logs (expect):
+
+SQLTransientConnectionException
+
+RecoverableDataAccessException
+
+CannotCreateTransactionException
+
+Mixed retry logs: some success, some fail
+
+Grafana (expect):
+
+Success Rate fluctuates (40–70%)
+
+Retry Calls → both successful_with_retry and failed_with_retry ↑
+
+Error Rate → intermittent spikes
+
+Post-Attack Verification
+
+After Gremlin halts:
+
+Logs: Retry attempts stop, normal DB calls succeed again.
+
+Grafana:
+
+Success Rate back to 100%
+
+Error Rate ~0
+
+Retry Calls flatten
+
+Latency returns to baseline
+
+Automated Grep Patterns
+
+You can use quick grep patterns for each chaos type:
+
+Blackhole
+
+grep -E "SQLRecoverableException|CannotCreateTransactionException" app.log
+
+
+Latency
+
+grep -E "SQLTransientException|TransactionTimedOutException|TransactionSystemException" app.log
+
+
+Packet Loss
+
+grep -E "SQLTransientConnectionException|RecoverableDataAccessException" app.log
+
+Runbook Summary
+
+Start log tail with grep.
+
+Run Gremlin scenario (Blackhole → Latency → Packet Loss).
+
+Correlate:
+
+Exceptions in logs = matches expected transient type.
+
+Grafana metrics = show retry behavior.
+
+App remains alive = resilience confirmed.
+
+############################################################################################
+##############################################################################################
+
+1) Health Checks (Gremlin → Configurations → Health Checks → “+ Health Check”)
+
+You can add either/both. Gremlin will poll them every ~10s and auto-fail/stop the Scenario if they alarm.
+
+A) Simple HTTP check (Spring Boot Actuator)
+
+Observability Tool: Custom (like in your image).
+Nickname: Actuator-Health.
+
+Is this tool behind a firewall/on-prem? → Yes (since it’s internal). Select a forwarder agent that can reach your app URL.
+
+Authentication: if /actuator/health is protected, click Add Header → Authorization: Bearer <token> (or Basic). Leave “Authentication Endpoint” empty if you use a static token.
+
+Connect Monitor/Alert: choose HTTP →
+
+Method/URL: GET http://<app-host>:<port>/actuator/health
+
+Success when: HTTP 2xx and JSON status is UP
+
+Alarm rule: alarm after ≥3 failed polls (typical).
+
+Save.
+
+B) Prometheus / Alertmanager check (recommended)
+
+Observability Tool: Custom.
+Nickname: Alertmanager.
+
+On-prem? → Yes, pick a forwarder agent that can hit Alertmanager (http://<host>:9093).
+
+Authentication: Add Header → Authorization: Bearer <API_TOKEN> (or Basic).
+
+Connect Monitor/Alert: target http://<alertmanager>:9093/api/v1/alerts and configure to alarm when any configured alert is firing.
+Use the alert names from the YAML I provided:
+
+HighErrorRate
+
+P95LatencyHigh
+
+DBConnectionSaturation
+
+Save.
+
+Tip: If your Gremlin account shows “Prometheus/Alertmanager” 
+as a built-in option, pick it. 
+Otherwise “Custom” works fine with the API + headers as above.
+
+2) Create Experiments (Gremlin → Experiments → New → Hosts)
+
+Target the APP hosts (not the DB host) so we emulate client-side DB transients.
+
+Network → Blackhole
+
+Direction: Outgoing
+
+Destination host: <ORACLE_DB_IP>; Port: 1521
+
+Block: 100%; Duration: 3m
+
+Save as: EXP: Oracle Blackhole 1521
+
+Network → Latency
+
+Direction: Outgoing
+
+Destination: <ORACLE_DB_IP>; Port: 1521
+
+Latency: 500ms (Jitter 100ms optional); Duration: 3m
+
+Save as: EXP: Oracle Latency 500ms
+
+Network → Packet Loss
+
+Direction: Outgoing
+
+Destination: <ORACLE_DB_IP>; Port: 1521
+
+Loss: 20%; Duration: 3m
+
+Save as: EXP: Oracle PacketLoss 20%
+
+3) Build the Scenario (Gremlin → Scenarios → New)
+
+Name: Oracle-DB: DB-Transient-Resilience-Validation
+
+This scenario will … if health checks go into alarm: choose Fail
+
+Health Checks: click Add Health Check → select the ones you created (Actuator and/or Alertmanager)
+
+Ordered Nodes (click Add):
+
+Pause 60s (baseline)
+
+Run EXP: Oracle Latency 500ms (3m)
+
+Pause 60s
+
+Run EXP: Oracle PacketLoss 20% (3m)
+
+Pause 60s
+
+Run EXP: Oracle Blackhole 1521 (3m)
+
+Blast radius: start with 1 canary host, widen later.
+
+Save Scenario → Run.
+
+4) Grafana validation (what you should see)
+
+Use Micrometer/PromQL panels; examples included in the runbook/YAML.
+
+Error rate rises most during packet-loss and blackhole.
+
+P95 latency climbs clearly under the latency experiment, moderate under loss.
+
+HikariCP saturation (hikaricp_connections_active / hikaricp_connections_max) approaches 1.0 under latency/loss.
+
+On blackhole, errors/timeouts spike; your circuit breaker (if configured) should open quickly and recover after rollback.
+
+5) Safety & rollback
+
+Gremlin rolls back rules automatically at the end or when health checks alarm. You can always click Halt. (Manual cleanup commands are in the runbook file.)
+
+jmeter.bat -n -t C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx -l C:\smamilla\testCases\results.jtl ^
+-Djavax.net.ssl.keyStore=C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.jks ^
+-Djavax.net.ssl.keyStorePassword=Resobserver123# ^
+-Djavax.net.ssl.keyStoreType=JKS ^
+-Djavax.net.ssl.trustStore=C:\smamilla\dev-certificates\truststore.jks ^
+-Djavax.net.ssl.trustStorePassword=Resobserver123#
+
+./jmeter -n -t /home/user/testCases/CCW_UCATrades_Demo_DEV_Envi.jmx -l /home/user/testCases/results.jtl \
+-Djavax.net.ssl.keyStore=/home/user/dev-certificates/prometheus.res.appdev.dtcc.org.jks \
+-Djavax.net.ssl.keyStorePassword=Resobserver123# \
+-Djavax.net.ssl.keyStoreType=JKS \
+-Djavax.net.ssl.trustStore=/home/user/dev-certificates/truststore.jks \
+-Djavax.net.ssl.trustStorePassword=Resobserver123#
+
+Run with SSL debug logging to see handshake issues:
+
+jmeter.bat -n -t test.jmx -l results.jtl -Djavax.net.ssl.debug=ssl,handshake
+
+This will print whether:
+
+Wrong password for keystore/truststore
+
+Wrong alias inside keystore
+
+Certificate chain not trusted
+
+run-jmeter.bat
+@echo off
+REM === CONFIGURATION ===
+set JMETER_HOME=C:\Tools\apache-jmeter-5.5
+set TEST_PLAN=C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx
+set RESULTS_FILE=C:\smamilla\testCases\results.jtl
+
+REM === SSL CERTIFICATES ===
+set KEYSTORE=C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.jks
+set KEYSTORE_PASS=Resobserver123#
+set TRUSTSTORE=C:\smamilla\dev-certificates\truststore.jks
+set TRUSTSTORE_PASS=Resobserver123#
+
+REM === SERVER INFO (for truststore auto-create) ===
+set SERVER_HOST=prometheus.res.appdev.dtcc.org
+set SERVER_PORT=443
+
+REM === AUTO-GENERATE TRUSTSTORE IF NOT EXISTS ===
+if not exist "%TRUSTSTORE%" (
+    echo Truststore not found. Exporting server cert and creating truststore...
+    REM Export server certificate (requires OpenSSL installed in PATH)
+    openssl s_client -connect %SERVER_HOST%:%SERVER_PORT% -showcerts <NUL | openssl x509 -outform PEM > server.crt
+    keytool -import -trustcacerts -alias server-cert -file server.crt -keystore "%TRUSTSTORE%" -storepass %TRUSTSTORE_PASS% -noprompt
+)
+
+REM === RUN JMETER ===
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" ^
+-Djavax.net.ssl.keyStore="%KEYSTORE%" ^
+-Djavax.net.ssl.keyStorePassword=%KEYSTORE_PASS% ^
+-Djavax.net.ssl.keyStoreType=JKS ^
+-Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+-Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS%
+-Djavax.net.debug=ssl,handshake
+
+echo ================================
+echo Test finished. Results stored in:
+echo %RESULTS_FILE%
+echo ================================
+pause
+
+Linux Script (run-jmeter.sh)
+
+#!/bin/bash
+# === CONFIGURATION ===
+JMETER_HOME=/opt/apache-jmeter-5.5
+TEST_PLAN=/home/user/testCases/CCW_UCATrades_Demo_DEV_Envi.jmx
+RESULTS_FILE=/home/user/testCases/results.jtl
+
+# === SSL CERTIFICATES ===
+KEYSTORE=/home/user/dev-certificates/prometheus.res.appdev.dtcc.org.jks
+KEYSTORE_PASS=Resobserver123#
+TRUSTSTORE=/home/user/dev-certificates/truststore.jks
+TRUSTSTORE_PASS=Resobserver123#
+
+# === SERVER INFO (for truststore auto-create) ===
+SERVER_HOST=prometheus.res.appdev.dtcc.org
+SERVER_PORT=443
+
+# === AUTO-GENERATE TRUSTSTORE IF NOT EXISTS ===
+if [ ! -f "$TRUSTSTORE" ]; then
+  echo "Truststore not found. Exporting server cert and creating truststore..."
+  # Export server certificate (requires openssl + keytool installed)
+  echo | openssl s_client -connect ${SERVER_HOST}:${SERVER_PORT} -showcerts 2>/dev/null | openssl x509 -outform PEM > server.crt
+  keytool -import -trustcacerts -alias server-cert -file server.crt -keystore "$TRUSTSTORE" -storepass $TRUSTSTORE_PASS -noprompt
+fi
+
+# === RUN JMETER ===
+$JMETER_HOME/bin/jmeter -n -t "$TEST_PLAN" -l "$RESULTS_FILE" \
+-Djavax.net.ssl.keyStore="$KEYSTORE" \
+-Djavax.net.ssl.keyStorePassword=$KEYSTORE_PASS \
+-Djavax.net.ssl.keyStoreType=JKS \
+-Djavax.net.ssl.trustStore="$TRUSTSTORE" \
+-Djavax.net.ssl.trustStorePassword=$TRUSTSTORE_PASS
+-Djavax.net.debug=ssl,handshake
+
+echo "=============================="
+echo "Test finished. Results stored in:"
+echo "$RESULTS_FILE"
+echo "=============================="
+
+Debug SSL Handshake
+
+-Djavax.net.debug=ssl,handshake
+
+Step 1. Export the server certificate
+openssl s_client -connect <server-host>:<port> -showcerts </dev/null 2>/dev/null | openssl x509 -outform PEM > server.crt
+
+Example
+openssl s_client -connect prometheus.res.appdev.dtcc.org:443 -showcerts </dev/null 2>/dev/null | openssl x509 -outform PEM > server.crt
+
+Step 2. Create a truststore.jks
+keytool -import -trustcacerts -alias server-cert -file server.crt -keystore truststore.jks -storepass Resobserver123#
+
+-alias server-cert → just a name, can be anything.
+
+-file server.crt → the certificate you exported.
+
+-keystore truststore.jks → this will create the truststore file.
+
+-storepass Resobserver123# → must match what you use in JMeter.
+
+Step 3. Verify contents of truststore
+
+keytool -list -v -keystore truststore.jks -storepass Resobserver123#
+
+Step 4. Update JMeter scripts
+
+-Djavax.net.ssl.trustStore=.../truststore.jks
+-Djavax.net.ssl.trustStorePassword=Resobserver123#
+
+run-jmeter.ps1
+
+# ================================
+# JMeter SSL Test Runner (PowerShell)
+# ================================
+
+# === CONFIGURATION ===
+$JMETER_HOME = "C:\Tools\apache-jmeter-5.5"
+$TEST_PLAN   = "C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx"
+$OUTPUT_DIR  = "C:\smamilla\testCases"
+
+# === SSL CERTIFICATES ===
+$KEYSTORE       = "C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.jks"
+$KEYSTORE_PASS  = "Resobserver123#"
+$TRUSTSTORE     = "C:\smamilla\dev-certificates\truststore.jks"
+$TRUSTSTORE_PASS= "Resobserver123#"
+
+# === SERVER INFO ===
+$SERVER_HOST = "prometheus.res.appdev.dtcc.org"
+$SERVER_PORT = 443
+
+# === TIMESTAMPED FILES ===
+$Timestamp    = Get-Date -Format "yyyyMMdd-HHmmss"
+$RESULTS_FILE = Join-Path $OUTPUT_DIR "results-$Timestamp.jtl"
+$LOG_FILE     = Join-Path $OUTPUT_DIR "ssl-debug-$Timestamp.log"
+
+# === FUNCTION: Check if OpenSSL is installed ===
+function Test-OpenSSL {
+    $openssl = Get-Command openssl -ErrorAction SilentlyContinue
+    if ($openssl) {
+        Write-Host "✅ OpenSSL is installed at $($openssl.Source)"
+        openssl version
+        return $true
+    } else {
+        Write-Host "❌ OpenSSL not found."
+        Write-Host "👉 Please install from: https://slproweb.com/products/Win32OpenSSL.html"
+        Write-Host "   or export the server certificate manually and create the truststore."
+        return $false
+    }
+}
+
+# === CHECK IF TRUSTSTORE EXISTS ===
+if (-Not (Test-Path $TRUSTSTORE)) {
+    Write-Host "⚠️ Truststore not found. Attempting to create it..."
+
+    if (Test-OpenSSL) {
+        Write-Host "Fetching server certificate with OpenSSL..."
+        openssl s_client -connect "$SERVER_HOST`:$SERVER_PORT" -showcerts < $null | openssl x509 -outform PEM > server.crt
+        & keytool -import -trustcacerts -alias server-cert -file server.crt -keystore $TRUSTSTORE -storepass $TRUSTSTORE_PASS -noprompt
+        Write-Host "✅ Truststore created at $TRUSTSTORE"
+    } else {
+        Write-Host "❌ Cannot create truststore automatically because OpenSSL is missing."
+        Exit 1
+    }
+}
+
+# === RUN JMETER WITH SSL DEBUG AND LOGGING ===
+Write-Host "🚀 Running JMeter test..."
+Write-Host "📜 Logging detailed SSL handshake output to: $LOG_FILE"
+Write-Host "📊 Results will be stored in: $RESULTS_FILE"
+
+& "$JMETER_HOME\bin\jmeter.bat" -n -t $TEST_PLAN -l $RESULTS_FILE `
+-Djavax.net.ssl.keyStore="$KEYSTORE" `
+-Djavax.net.ssl.keyStorePassword=$KEYSTORE_PASS `
+-Djavax.net.ssl.keyStoreType=JKS `
+-Djavax.net.ssl.trustStore="$TRUSTSTORE" `
+-Djavax.net.ssl.trustStorePassword=$TRUSTSTORE_PASS `
+-Djavax.net.debug=ssl,handshake *>&1 | Tee-Object -FilePath $LOG_FILE
+
+Write-Host "=============================="
+Write-Host "✅ Test finished."
+Write-Host "📂 Results stored in: $RESULTS_FILE"
+Write-Host "📂 SSL debug log stored in: $LOG_FILE"
+Write-Host "=============================="
+
+##########################################################################
+##########################################################################
+@echo off
+REM === CONFIGURATION ===
+set JMETER_HOME=C:\Tools\apache-jmeter-5.5
+set TEST_PLAN=C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx
+set RESULTS_FILE=C:\smamilla\testCases\results.jtl
+
+REM === SSL CERTIFICATES ===
+set KEYSTORE=C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.jks
+set KEYSTORE_PASS=Resobserver123#
+set TRUSTSTORE=C:\smamilla\dev-certificates\truststore.jks
+set TRUSTSTORE_PASS=Resobserver123#
+
+REM === SERVER INFO ===
+set SERVER_HOST=prometheus.res.appdev.dtcc.org
+set SERVER_PORT=443
+
+REM === AUTO-GENERATE TRUSTSTORE IF NOT EXISTS ===
+if not exist "%TRUSTSTORE%" (
+    echo Truststore not found. Fetching server cert chain and creating truststore...
+
+    REM Fetch the full certificate chain from the server
+    echo | "%JAVA_HOME%\bin\keytool" -printcert -rfc -sslserver %SERVER_HOST%:%SERVER_PORT% > server_chain.pem
+
+    REM Clear old truststore if exists (prevent duplicates)
+    del "%TRUSTSTORE%" 2>nul
+
+    REM Import each certificate in the chain into truststore
+    for /f "tokens=1 delims=:" %%a in ('findstr /n "BEGIN CERTIFICATE" server_chain.pem') do (
+        set /a count+=1
+        set "certfile=cert!count!.pem"
+        call :extract_cert %%a !certfile!
+        "%JAVA_HOME%\bin\keytool" -importcert -noprompt -trustcacerts ^
+            -alias cert!count! ^
+            -file !certfile! ^
+            -keystore "%TRUSTSTORE%" ^
+            -storepass %TRUSTSTORE_PASS%
+    )
+)
+
+goto runJmeter
+
+:extract_cert
+    setlocal ENABLEDELAYEDEXPANSION
+    set startLine=%1
+    set outfile=%2
+    set inCert=0
+    > %outfile% (
+        for /f "usebackq delims=" %%L in ("server_chain.pem") do (
+            set line=%%L
+            if "!line!"=="-----BEGIN CERTIFICATE-----" set inCert=1
+            if !inCert! EQU 1 echo !line!
+            if "!line!"=="-----END CERTIFICATE-----" set inCert=0
+        )
+    )
+    endlocal
+    exit /b
+
+:runJmeter
+REM === RUN JMETER ===
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" ^
+-Djavax.net.ssl.keyStore="%KEYSTORE%" ^
+-Djavax.net.ssl.keyStorePassword=%KEYSTORE_PASS% ^
+-Djavax.net.ssl.keyStoreType=JKS ^
+-Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+-Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS% ^
+-Djdk.tls.client.protocols=TLSv1.2 ^
+-Djavax.net.debug=ssl,handshake
+
+echo ================================
+echo Test finished. Results stored in:
+echo %RESULTS_FILE%
+echo ================================
+pause
+
+
+################################################################
+################################################################
+################################################################
+import javax.net.ssl.HttpsURLConnection;
+import java.net.URL;
+
+public class TlsCheck {
+    public static void main(String[] args) {
+        try {
+            System.setProperty("https.protocols", "TLSv1.2");
+            URL url = new URL("https://prometheus.res.appdev.dtcc.org");
+            HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            int code = con.getResponseCode();
+            System.out.println("Success! Response code: " + code);
+        } catch (Exception e) {
+            System.err.println("Failed TLS connection: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+
+keytool -list -v -keystore "C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.jks" -storepass Resobserver123#
+
+You should see:
+
+Entry type: PrivateKeyEntry
+
+A certificate chain with at least 2 entries
+
+At least one Root CA
+
+Optionally an Intermediate CA
+
+No expired certs
+
+Open JMeter GUI
+
+Load your test plan .jmx
+
+Go to your HTTP Request
+
+Set "Implementation" to HttpClient4
+
+Or in the .jmx file, confirm this snippet exists:
+
+<stringProp name="HTTPSampler.Implementation">HttpClient4</stringProp>
+
+Java TLS Connection	Success! Response code: 200 or similar
+Keystore (.jks)	Entry type: PrivateKeyEntry
+Truststore (.jks)	Has at least one Root CA
+JMeter sampler	Uses HttpClient4
+JMeter debug output	Shows ClientHello and ServerHello
+
+"%JAVA_HOME%\bin\keytool" -importkeystore ^
+  -srckeystore "C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx" ^
+  -srcstoretype PKCS12 ^
+  -srcstorepass <PFX_PASSWORD> ^
+  -destkeystore "C:\smamilla\dev-certificates\prometheus-client.jks" ^
+  -deststoretype JKS ^
+  -deststorepass Resobserver123#
+
+del "C:\smamilla\dev-certificates\prometheus-truststore.jks" 2>nul
+
+"%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -noprompt ^
+ -alias prometheus ^
+ -file "C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.cer" ^
+ -keystore "C:\smamilla\dev-certificates\prometheus-truststore.jks" ^
+ -storepass Resobserver123#
+
+ If you also have Root CA and Intermediate CA certificates, import them too the same way (with different -alias values).
+ Now you have:
+C:\smamilla\dev-certificates\prometheus-truststore.jks → contains trusted server certs
+
+Update Your Batch Script
+set KEYSTORE=C:\smamilla\dev-certificates\prometheus-client.jks
+set KEYSTORE_PASS=Resobserver123#
+set TRUSTSTORE=C:\smamilla\dev-certificates\prometheus-truststore.jks
+set TRUSTSTORE_PASS=Resobserver123#
+
+Run JMeter forcing TLSv1.2
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" ^
+-Djavax.net.ssl.keyStore="%KEYSTORE%" ^
+-Djavax.net.ssl.keyStorePassword=%KEYSTORE_PASS% ^
+-Djavax.net.ssl.keyStoreType=JKS ^
+-Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+-Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS% ^
+-Djdk.tls.client.protocols=TLSv1.2 ^
+-Dhttps.protocols=TLSv1.2 ^
+-Djavax.net.debug=ssl,handshake
+
+Run this to confirm keystore has private key (critical for mutual TLS):
+"%JAVA_HOME%\bin\keytool" -list -v -keystore C:\smamilla\dev-certificates\prometheus-client.jks -storepass Resobserver123#
+
+You must see Entry type: PrivateKeyEntry
+If you only see trustedCertEntry, handshake will fail because there’s no private key.
+
+Run this to confirm truststore has certs:
+
+"%JAVA_HOME%\bin\keytool" -list -v -keystore C:\smamilla\dev-certificates\prometheus-truststore.jks -storepass Resobserver123#
+
+.pfx → converted into JKS (client keystore with private key)
+
+.cer (and optional CA certs) → truststore
+
+JMeter uses both → handshake success.
+
+######################################################################################
+######################################################################################
+###############################runJMeterWithCerts.bat#################################
+@echo off
+:: ==============================
+:: CONFIGURATION
+:: ==============================
+set JMETER_HOME=C:\Tools\apache-jmeter-5.5
+set TEST_PLAN=C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx
+set RESULTS_FILE=C:\smamilla\testCases\results.jtl
+
+set PFX_FILE=C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx
+set PFX_PASS=<PFX_PASSWORD>   :: replace with actual password for .pfx
+
+set KEYSTORE=C:\smamilla\dev-certificates\prometheus-client.jks
+set KEYSTORE_PASS=Resobserver123#
+set TRUSTSTORE=C:\smamilla\dev-certificates\prometheus-truststore.jks
+set TRUSTSTORE_PASS=Resobserver123#
+set CERT_FOLDER=C:\smamilla\dev-certificates
+
+:: ==============================
+:: GENERATE KEYSTORE
+:: ==============================
+if not exist "%KEYSTORE%" (
+    echo [INFO] Creating client keystore from PFX...
+    "%JAVA_HOME%\bin\keytool" -importkeystore -srckeystore "%PFX_FILE%" -srcstoretype PKCS12 -srcstorepass %PFX_PASS% -destkeystore "%KEYSTORE%" -deststoretype JKS -deststorepass %KEYSTORE_PASS%
+) else (
+    echo [INFO] Keystore already exists: %KEYSTORE%
+)
+
+:: ==============================
+:: VALIDATE KEYSTORE
+:: ==============================
+echo [INFO] Checking keystore for private key entry...
+"%JAVA_HOME%\bin\keytool" -list -v -keystore "%KEYSTORE%" -storepass %KEYSTORE_PASS% | findstr /C:"PrivateKeyEntry" >nul
+if errorlevel 1 (
+    echo [ERROR] Keystore does NOT contain a PrivateKeyEntry.
+    pause
+    exit /b 1
+) else (
+    echo [OK] Keystore contains a PrivateKeyEntry.
+)
+
+:: ==============================
+:: GENERATE TRUSTSTORE
+:: ==============================
+if exist "%TRUSTSTORE%" (
+    echo [INFO] Deleting old truststore...
+    del "%TRUSTSTORE%" 2>nul
+)
+
+setlocal enabledelayedexpansion
+set COUNT=0
+for %%F in ("%CERT_FOLDER%\*.cer" "%CERT_FOLDER%\*.crt") do (
+    if exist "%%F" (
+        set /a COUNT+=1
+        echo [INFO] Importing %%~nxF as alias cert!COUNT!...
+        "%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -noprompt -alias cert!COUNT! -file "%%F" -keystore "%TRUSTSTORE%" -storepass %TRUSTSTORE_PASS%
+    )
+)
+endlocal
+
+:: ==============================
+:: VALIDATE TRUSTSTORE
+:: ==============================
+echo [INFO] Checking truststore contents...
+"%JAVA_HOME%\bin\keytool" -list -v -keystore "%TRUSTSTORE%" -storepass %TRUSTSTORE_PASS% | findstr /C:"Alias name:" >nul
+if errorlevel 1 (
+    echo [ERROR] Truststore is empty.
+    pause
+    exit /b 1
+) else (
+    echo [OK] Truststore has entries.
+)
+
+:: ==============================
+:: RUN JMETER
+:: ==============================
+echo [INFO] Running JMeter with TLSv1.2...
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" -Djavax.net.ssl.keyStore="%KEYSTORE%" -Djavax.net.ssl.keyStorePassword=%KEYSTORE_PASS% -Djavax.net.ssl.keyStoreType=JKS -Djavax.net.ssl.trustStore="%TRUSTSTORE%" -Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS% -Djdk.tls.client.protocols=TLSv1.2 -Dhttps.protocols=TLSv1.2 -Djavax.net.debug=ssl,handshake
+
+echo ================================
+echo Test finished. Results stored in:
+echo %RESULTS_FILE%
+echo ================================
+pause
+######################################################################################
+######################################################################################
+###############################END JMeterWithCerts.bat#################################
+What this script does
+
+If keystore doesn’t exist → converts .pfx → prometheus-client.jks.
+
+Deletes old truststore (so it’s always fresh).
+
+Imports all .cer and .crt files from C:\smamilla\dev-certificates\ into truststore with auto-generated aliases (cert1, cert2, …).
+
+Runs JMeter with TLSv1.2 and SSL debug enabled.
+
+Put these files in C:\smamilla\dev-certificates\:
+
+prometheus.res.appdev.dtcc.org.pfx (with private key).
+
+prometheus.res.appdev.dtcc.org.cer (server cert).
+
+Any Root CA / Intermediate CA certs (.cer or .crt).
+
+set PFX_PASS=<PFX_PASSWORD>
+Run runJMeterWithCerts.bat.
+
+#######################################Simple FIX################################
+@echo off
+
+set JMETER_HOME=C:\Tools\apache-jmeter-5.5
+set TEST_PLAN=C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx
+set RESULTS_FILE=C:\smamilla\testCases\results.jtl
+
+:: Your PFX file + password
+set KEYSTORE=C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx
+set KEYSTORE_PASS=<PFX_PASSWORD>
+
+:: Truststore (use cacerts or your own truststore if needed)
+set TRUSTSTORE=%JAVA_HOME%\lib\security\cacerts
+set TRUSTSTORE_PASS=changeit
+
+echo [INFO] Running JMeter...
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" ^
+ -Djavax.net.ssl.keyStore="%KEYSTORE%" ^
+ -Djavax.net.ssl.keyStorePassword=%KEYSTORE_PASS% ^
+ -Djavax.net.ssl.keyStoreType=PKCS12 ^
+ -Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+ -Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS% ^
+ -Djdk.tls.client.protocols=TLSv1.2 ^
+ -Dhttps.protocols=TLSv1.2 ^
+ -Djavax.net.debug=ssl,handshake
+
+echo ================================
+echo Test finished. Results stored in:
+echo %RESULTS_FILE%
+echo ================================
+pause
+###########################################################################
+
+Verify keystore really has a private key
+"%JAVA_HOME%\bin\keytool" -list -v -storetype PKCS12 -keystore C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx -storepass <PFX_PASSWORD>
+Entry type: PrivateKeyEntry
+
+If you only see trustedCertEntry → this .pfx is missing the private key → re-export .pfx with private key.
+
+Verify truststore contains server’s CA cert
+"%JAVA_HOME%\bin\keytool" -list -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit | findstr /I "prometheus"
+
+If your server’s CA is not in there, you must import it:
+"%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -alias prometheusCA -file C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.cer -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit -noprompt
+
+
+"%JAVA_HOME%\bin\keytool" -list -v -storetype PKCS12 -keystore C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx -storepass <PFX_PASSWORD> | findstr "Entry type"
+
+Check TLS version / ciphers
+
+-Djdk.tls.client.protocols=TLSv1.3
+-Dhttps.protocols=TLSv1.3
+
+If your server’s CA is not in there, you must import it:
+
+"%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -alias prometheusCA -file C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.cer -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit -noprompt
+"%JAVA_HOME%\bin\keytool" -list -v -storetype PKCS12 -keystore C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.pfx -storepass <PFX_PASSWORD> | findstr "Entry type"
+
+Minimal JMeter Script (Truststore Only)
+@echo off
+
+set JMETER_HOME=C:\Tools\apache-jmeter-5.5
+set TEST_PLAN=C:\smamilla\testCases\CCW_UCATrades_Demo_DEV_Envi.jmx
+set RESULTS_FILE=C:\smamilla\testCases\results.jtl
+
+:: ===== TRUSTSTORE (use Java's default cacerts or your own) =====
+set TRUSTSTORE=%JAVA_HOME%\lib\security\cacerts
+set TRUSTSTORE_PASS=changeit
+
+echo [INFO] Running JMeter without client certificate...
+"%JMETER_HOME%\bin\jmeter.bat" -n -t "%TEST_PLAN%" -l "%RESULTS_FILE%" ^
+ -Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+ -Djavax.net.ssl.trustStorePassword=%TRUSTSTORE_PASS% ^
+ -Djdk.tls.client.protocols=TLSv1.2 ^
+ -Dhttps.protocols=TLSv1.2 ^
+ -Djavax.net.debug=ssl,handshake
+
+echo ================================
+echo Test finished. Results stored in:
+echo %RESULTS_FILE%
+echo ================================
+pause
+
+Server CA → The certificate authority that signed prometheus.res.appdev.dtcc.org.
+
+Must be in the truststore (so your Java/JMeter trusts the server).
+
+If missing → you’ll get PKIX path building failed.
+
+Client Keystore (.pfx / .jks) → What JMeter uses to prove its identity to the server.
+
+Must contain your private key (PrivateKeyEntry).
+
+If missing → you’ll get SSLHandshakeException handshake_failure.
+
+Truststore (.jks or cacerts) → Where Java looks to verify server’s cert chain.
+
+Default truststore is %JAVA_HOME%\lib\security\cacerts (password = changeit).
+
+If your server uses an internal CA, you must import that CA cert into this truststore
+
+CA certificate = Passport office (who you trust to issue valid passports).
+
+Server certificate = Passport of the server (prometheus.res.appdev.dtcc.org).
+
+Truststore = List of passport offices you trust.
+
+Keystore (.pfx/.jks) = Your own passport (and your private key = your signature).
+
+JMeter needs both:
+A truststore (to trust the server’s cert)
+
+A keystore (to present its own cert/private key, if server requires client auth)
+
+If you get PKIX path building failed
+
+%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -alias prometheusCA ^
+ -file C:\smamilla\dev-certificates\prometheus.res.appdev.dtcc.org.cer ^
+ -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit -noprompt
+

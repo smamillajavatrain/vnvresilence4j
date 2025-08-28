@@ -1,0 +1,29 @@
+groups:
+  - name: chaos-experiment-alerts
+    rules:
+      - alert: HighLatencyDuringExperiment
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency > 2s during chaos experiment"
+
+      - alert: DatabaseConnectionErrors
+        expr: increase(jdbc_connections_active[1m]) > 100
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DB connection issue"
+          description: "Spike in active DB connections detected during chaos experiment"
+
+      - alert: AppDown
+        expr: up{job="spring-boot-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "App is down"
+          description: "Spring Boot app did not respond to scrape during chaos experiment"
