@@ -268,3 +268,84 @@ echo ======================================
 
 ENDLOCAL
 pause
+
+######################################################################
+curl.sh##############################################################
+#!/bin/bash
+
+# Define certificate directory and credentials
+CERT_DIR="/apps/res/devtests/certificates"
+TRUSTSTORE="$CERT_DIR/truststore.jks"
+KEYSTORE="$CERT_DIR/prometheus.res.appdev.dtcc.org.jks"
+ROOT_CA="$CERT_DIR/DTCC_CORP_ROOT_CA_R3.crt"
+ISSUING_CA="$CERT_DIR/DTCC_CORP_Issuing_CA_R3.crt"
+STOREPASS="changeit"  # Replace with actual password if different
+
+CLIENT_CERT="$CERT_DIR/prometheus.res.appdev.dtcc.org.crt"
+CLIENT_KEY="$CERT_DIR/nopass.key"
+CACERT="$ROOT_CA"
+
+# Step 1: Create Truststore
+echo "======================================"
+echo " Step 1: Creating Truststore"
+echo "======================================"
+rm -f "$TRUSTSTORE"
+
+keytool -importcert -alias dtcc-root -file "$ROOT_CA" \
+    -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
+
+keytool -importcert -alias dtcc-issuing -file "$ISSUING_CA" \
+    -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
+
+# Step 2: Call endpoint using curl
+echo "======================================"
+echo " Step 2: Calling API with curl"
+echo "======================================"
+
+curl -kv --trace - --trace-time "https://Swtmcd0061.dtcc.com:20001/getStatsCount" \
+    --cert "$CLIENT_CERT" --key "$CLIENT_KEY" --cacert "$CACERT" --pass Resobserve123#
+
+# You can add more curl commands here to other endpoints as shown in your image
+
+######################################################################
+curl.bat##############################################################
+@echo off
+SETLOCAL
+
+:: Set certificate and keystore paths
+SET CERT_DIR=C:\apps\res\devtests\certificates
+SET TRUSTSTORE=%CERT_DIR%\truststore.jks
+SET KEYSTORE=%CERT_DIR%\prometheus.res.appdev.dtcc.org.jks
+SET ROOT_CA=%CERT_DIR%\DTCC_CORP_ROOT_CA_R3.crt
+SET ISSUING_CA=%CERT_DIR%\DTCC_CORP_Issuing_CA_R3.crt
+SET STOREPASS=changeit  :: Replace with actual password if needed
+
+SET CLIENT_CERT=%CERT_DIR%\prometheus.res.appdev.dtcc.org.crt
+SET CLIENT_KEY=%CERT_DIR%\nopass.key
+SET CACERT=%ROOT_CA%
+
+:: Step 1: Create Truststore
+echo ======================================
+echo Step 1: Creating Truststore
+echo ======================================
+
+IF EXIST "%TRUSTSTORE%" (
+    DEL /F /Q "%TRUSTSTORE%"
+)
+
+keytool -importcert -alias dtcc-root -file "%ROOT_CA%" ^
+    -keystore "%TRUSTSTORE%" -storepass %STOREPASS% -noprompt
+
+keytool -importcert -alias dtcc-issuing -file "%ISSUING_CA%" ^
+    -keystore "%TRUSTSTORE%" -storepass %STOREPASS% -noprompt
+
+:: Step 2: Call API with curl
+echo ======================================
+echo Step 2: Calling API with curl
+echo ======================================
+
+curl -kv --trace - --trace-time "https://Swtmcd0061.dtcc.com:20001/getStatsCount" ^
+    --cert "%CLIENT_CERT%" --key "%CLIENT_KEY%" --cacert "%CACERT%" --pass Resobserve123#
+
+ENDLOCAL
+pause
