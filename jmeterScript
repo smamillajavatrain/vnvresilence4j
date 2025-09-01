@@ -1,0 +1,77 @@
+Step 1: Create Truststore from CA certs
+keytool -importcert -alias dtcc-root -file "/apps/res/devtests/certificates/DTCC CORP ROOT CA R3.crt" \
+    -keystore "/apps/res/devtests/certificates/truststore.jks" -storepass Resobserver123 -noprompt
+
+keytool -importcert -alias dtcc-issuing -file "/apps/res/devtests/certificates/DTCC CORP Issuing CA R3.crt" \
+    -keystore "/apps/res/devtests/certificates/truststore.jks" -storepass Resobserver123 -noprompt
+
+Step 2: Convert .pfx into .jks keystore
+keytool -importkeystore \
+    -srckeystore "/apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.pfx" -srcstoretype PKCS12 \
+    -destkeystore "/apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.jks" -deststoretype JKS \
+    -srcstorepass Resobserver123 -deststorepass Resobserver123
+Step 3: Run JMeter with SSL config
+jmeter -n -t /apps/res/devtests/testcase/CCW_UCATrades_Demo_DEV_Envi.jmx \
+    -l /home/user/testCases/results.jtl \
+    -Djavax.net.ssl.keyStore=/apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.jks \
+    -Djavax.net.ssl.keyStorePassword=Resobserver123 \
+    -Djavax.net.ssl.keyStoreType=JKS \
+    -Djavax.net.ssl.trustStore=/apps/res/devtests/certificates/truststore.jks \
+    -Djavax.net.ssl.trustStorePassword=Resobserver123 \
+    -Dhttps.protocols=TLSv1.2,TLSv1.3 \
+    -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
+
+chmod +x runJmeter.sh
+
+runJmeter.sh
+#!/bin/bash
+# ================================
+# Run JMeter with SSL Certificates
+# ================================
+
+# --- Paths ---
+CERT_DIR="/apps/res/devtests/certificates"
+TRUSTSTORE="$CERT_DIR/truststore.jks"
+KEYSTORE="$CERT_DIR/prometheus.res.appdev.dtcc.org.jks"
+PFX_FILE="$CERT_DIR/prometheus.res.appdev.dtcc.org.pfx"
+ROOT_CA="$CERT_DIR/DTCC CORP ROOT CA R3.crt"
+ISSUING_CA="$CERT_DIR/DTCC CORP Issuing CA R3.crt"
+TEST_PLAN="/apps/res/devtests/testcase/CCW_UCATrades_Demo_DEV_Envi.jmx"
+RESULT_FILE="/home/user/testCases/results.jtl"
+
+# --- Password (change if different) ---
+STOREPASS="Resobserver123"
+
+echo "======================================"
+echo " Step 1: Creating Truststore"
+echo "======================================"
+rm -f "$TRUSTSTORE"
+keytool -importcert -alias dtcc-root -file "$ROOT_CA" \
+    -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
+keytool -importcert -alias dtcc-issuing -file "$ISSUING_CA" \
+    -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
+
+echo "======================================"
+echo " Step 2: Creating Keystore from PFX"
+echo "======================================"
+rm -f "$KEYSTORE"
+keytool -importkeystore \
+    -srckeystore "$PFX_FILE" -srcstoretype PKCS12 \
+    -destkeystore "$KEYSTORE" -deststoretype JKS \
+    -srcstorepass "$STOREPASS" -deststorepass "$STOREPASS"
+
+echo "======================================"
+echo " Step 3: Running JMeter Test"
+echo "======================================"
+jmeter -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
+    -Djavax.net.ssl.keyStore="$KEYSTORE" \
+    -Djavax.net.ssl.keyStorePassword="$STOREPASS" \
+    -Djavax.net.ssl.keyStoreType=JKS \
+    -Djavax.net.ssl.trustStore="$TRUSTSTORE" \
+    -Djavax.net.ssl.trustStorePassword="$STOREPASS" \
+    -Dhttps.protocols=TLSv1.2,TLSv1.3 \
+    -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
+
+echo "======================================"
+echo " Done! Results saved to $RESULT_FILE"
+echo "======================================"
