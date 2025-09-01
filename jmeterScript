@@ -160,12 +160,6 @@ runJmeter.sh
 # Run JMeter with SSL Certificates
 # ================================
 
-#!/bin/bash
-# ================================
-# Run JMeter with SSL Certificates
-# Auto-detects JMeter installation
-# ================================
-
 # --- Try to locate JMeter binary ---
 if command -v jmeter >/dev/null 2>&1; then
     JMETER_BIN=$(command -v jmeter)
@@ -180,13 +174,12 @@ fi
 
 echo "Using JMeter binary: $JMETER_BIN"
 
-# --- Paths ---
+# --- Paths (update if needed) ---
 CERT_DIR="/apps/res/devtests/certificates"
 TRUSTSTORE="$CERT_DIR/truststore.jks"
 KEYSTORE="$CERT_DIR/prometheus.res.appdev.dtcc.org.jks"
-PFX_FILE="$CERT_DIR/prometheus.res.appdev.dtcc.org.pfx"
-ROOT_CA="$CERT_DIR/DTCC CORP ROOT CA R3.crt"
-ISSUING_CA="$CERT_DIR/DTCC CORP Issuing CA R3.crt"
+ROOT_CA="$CERT_DIR/DTCC CORP ROOT CA R3.cer"
+ISSUING_CA="$CERT_DIR/DTCC CORP Issuing CA R3.cer"
 TEST_PLAN="/apps/res/devtests/testcase/CCW_UCATrades_Demo_DEV_Envi.jmx"
 RESULT_FILE="/home/user/testCases/results.jtl"
 
@@ -203,13 +196,12 @@ keytool -importcert -alias dtcc-issuing -file "$ISSUING_CA" \
     -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
 
 echo "======================================"
-echo " Step 2: Creating Keystore from PFX"
+echo " Step 2: Using Existing Keystore"
 echo "======================================"
-rm -f "$KEYSTORE"
-keytool -importkeystore \
-    -srckeystore "$PFX_FILE" -srcstoretype PKCS12 \
-    -destkeystore "$KEYSTORE" -deststoretype JKS \
-    -srcstorepass "$STOREPASS" -deststorepass "$STOREPASS"
+if [ ! -f "$KEYSTORE" ]; then
+    echo "ERROR: Keystore $KEYSTORE not found!"
+    exit 1
+fi
 
 echo "======================================"
 echo " Step 3: Running JMeter Test"
@@ -223,9 +215,6 @@ echo "======================================"
     -Dhttps.protocols=TLSv1.2,TLSv1.3 \
     -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
 
-echo "======================================"
-echo " Done! Results saved to $RESULT_FILE"
-echo "======================================"
 echo "======================================"
 echo " Done! Results saved to $RESULT_FILE"
 echo "======================================"
