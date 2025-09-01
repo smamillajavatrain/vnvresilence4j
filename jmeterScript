@@ -1,3 +1,20 @@
+which jmeter
+Shows the binary path if JMeter is in PATH. whereis jmeter
+Shows all locations where jmeter exists. find / -type f -name "jmeter" 2>/dev/null | grep bin
+Full filesystem search (can take longer). Look for something like:  /opt/apache-jmeter-5.5/bin/jmeter
+
+Update the script with the full JMeter path 
+  jmeter -n -t "$TEST_PLAN" -l "$RESULT_FILE" \  to /opt/apache-jmeter-5.5/bin/jmeter -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
+
+Where to keep runJmeter.sh
+
+Best options:
+
+Keep it in your project folder (e.g., /apps/res/devtests/).
+
+Or keep it in your home folder (/home/user/runJmeter.sh).
+
+####################################################################################
 Step 1: Create Truststore from CA certs
 keytool -importcert -alias dtcc-root -file "/apps/res/devtests/certificates/DTCC CORP ROOT CA R3.crt" \
     -keystore "/apps/res/devtests/certificates/truststore.jks" -storepass Resobserver123 -noprompt
@@ -28,6 +45,26 @@ runJmeter.sh
 # ================================
 # Run JMeter with SSL Certificates
 # ================================
+
+#!/bin/bash
+# ================================
+# Run JMeter with SSL Certificates
+# Auto-detects JMeter installation
+# ================================
+
+# --- Try to locate JMeter binary ---
+if command -v jmeter >/dev/null 2>&1; then
+    JMETER_BIN=$(command -v jmeter)
+elif [ -x "/opt/apache-jmeter-5.5/bin/jmeter" ]; then
+    JMETER_BIN="/opt/apache-jmeter-5.5/bin/jmeter"
+elif [ -x "/usr/local/apache-jmeter/bin/jmeter" ]; then
+    JMETER_BIN="/usr/local/apache-jmeter/bin/jmeter"
+else
+    echo "ERROR: Could not find JMeter. Please install JMeter and add it to PATH."
+    exit 1
+fi
+
+echo "Using JMeter binary: $JMETER_BIN"
 
 # --- Paths ---
 CERT_DIR="/apps/res/devtests/certificates"
@@ -63,7 +100,7 @@ keytool -importkeystore \
 echo "======================================"
 echo " Step 3: Running JMeter Test"
 echo "======================================"
-jmeter -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
+"$JMETER_BIN" -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
     -Djavax.net.ssl.keyStore="$KEYSTORE" \
     -Djavax.net.ssl.keyStorePassword="$STOREPASS" \
     -Djavax.net.ssl.keyStoreType=JKS \
@@ -72,6 +109,9 @@ jmeter -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
     -Dhttps.protocols=TLSv1.2,TLSv1.3 \
     -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
 
+echo "======================================"
+echo " Done! Results saved to $RESULT_FILE"
+echo "======================================"
 echo "======================================"
 echo " Done! Results saved to $RESULT_FILE"
 echo "======================================"
