@@ -1,3 +1,22 @@
+Confirm .pfx password
+keytool -list -v -storetype PKCS12 -keystore /apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.pfx
+It will prompt for the password. If the password is wrong, you’ll see the same integrity error.
+
+Re-run the conversion with correct password
+keytool -importkeystore \
+    -srckeystore /apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.pfx -srcstoretype PKCS12 \
+    -destkeystore /apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.jks -deststoretype JKS \
+    -srcstorepass <correct-pfx-password> -deststorepass Resobserver123
+Update the script
+Keep Resobserver123 as the new JKS password (can be same as truststore).
+Use the correct PFX password only during conversion step.
+
+Re-run JMeter
+./runJmeter.sh
+
+Check results in GUI
+Open /home/user/testCases/results.jtl in JMeter GUI → “View Results Tree” to confirm handshake success.
+
 which jmeter
 Shows the binary path if JMeter is in PATH. whereis jmeter
 Shows all locations where jmeter exists. find / -type f -name "jmeter" 2>/dev/null | grep bin
