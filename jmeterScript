@@ -161,19 +161,23 @@ runJmeter.sh
 # Auto-detects JMeter installation
 # ================================
 
-# --- Try to locate JMeter binary ---
-if command -v jmeter >/dev/null 2>&1; then
-    JMETER_BIN=$(command -v jmeter)
-elif [ -x "/opt/apache-jmeter-5.5/bin/jmeter" ]; then
-    JMETER_BIN="/opt/apache-jmeter-5.5/bin/jmeter"
-elif [ -x "/usr/local/apache-jmeter/bin/jmeter" ]; then
-    JMETER_BIN="/usr/local/apache-jmeter/bin/jmeter"
-else
-    echo "ERROR: Could not find JMeter. Please install JMeter and add it to PATH."
-    exit 1
-fi
+@echo off
+REM ================================
+REM Run JMeter with SSL Certificates (Windows)
+REM ================================
 
-echo "Using JMeter binary: $JMETER_BIN"
+REM --- Locate JMeter ---
+IF DEFINED JMETER_HOME (
+    SET JMETER_BIN=%JMETER_HOME%\bin\jmeter.bat
+) ELSE (
+    WHERE jmeter >nul 2>&1
+    IF %ERRORLEVEL%==0 (
+        FOR /F "delims=" %%i IN ('WHERE jmeter') DO SET JMETER_BIN=%%i
+    ) ELSE (
+        ECHO ERROR: Could not find JMeter. Please install JMeter and add it to PATH or set JMETER_HOME.
+        EXIT /B 1
+    )
+)
 
 # --- Paths (update if needed) ---
 CERT_DIR="/apps/res/devtests/certificates"
@@ -199,14 +203,7 @@ keytool -importcert -alias dtcc-issuing -file "$ISSUING_CA" \
 echo "======================================"
 echo " Step 2: Running JMeter Test"
 echo "======================================"
-"$JMETER_BIN" -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
-    -Djavax.net.ssl.keyStore="$KEYSTORE" \
-    -Djavax.net.ssl.keyStorePassword="$STOREPASS" \
-    -Djavax.net.ssl.keyStoreType=JKS \
-    -Djavax.net.ssl.trustStore="$TRUSTSTORE" \
-    -Djavax.net.ssl.trustStorePassword="$STOREPASS" \
-    -Dhttps.protocols=TLSv1.2,TLSv1.3 \
-    -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
+CALL "%JMETER_BIN%" -n -t "%TEST_PLAN%" -l "%RESULT_FILE%" -Djavax.net.ssl.keyStore="%KEYSTORE%" -Djavax.net.ssl.keyStorePassword="%STOREPASS%" -Djavax.net.ssl.keyStoreType=JKS -Djavax.net.ssl.trustStore="%TRUSTSTORE%" -Djavax.net.ssl.trustStorePassword="%STOREPASS%" -Dhttps.protocols=TLSv1.2,TLSv1.3 -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
 
 echo "======================================"
 echo " Done! Results saved to $RESULT_FILE"
