@@ -158,6 +158,7 @@ runJmeter.sh
 #!/bin/bash
 # ================================
 # Run JMeter with SSL Certificates
+# Auto-detects JMeter installation
 # ================================
 
 # --- Try to locate JMeter binary ---
@@ -178,13 +179,13 @@ echo "Using JMeter binary: $JMETER_BIN"
 CERT_DIR="/apps/res/devtests/certificates"
 TRUSTSTORE="$CERT_DIR/truststore.jks"
 KEYSTORE="$CERT_DIR/prometheus.res.appdev.dtcc.org.jks"
-ROOT_CA="$CERT_DIR/DTCC CORP ROOT CA R3.cer"
-ISSUING_CA="$CERT_DIR/DTCC CORP Issuing CA R3.cer"
+ROOT_CA="$CERT_DIR/DTCC_CORP_ROOT_CA_R3.crt"
+ISSUING_CA="$CERT_DIR/DTCC_CORP_Issuing_CA_R3.crt"
 TEST_PLAN="/apps/res/devtests/testcase/CCW_UCATrades_Demo_DEV_Envi.jmx"
-RESULT_FILE="/home/user/testCases/results.jtl"
+RESULT_FILE="/apps/res/devtests/testcase/results.jtl"
 
 # --- Password (change if different) ---
-STOREPASS="Resobserver123"
+STOREPASS="Resobserver123#"
 
 echo "======================================"
 echo " Step 1: Creating Truststore"
@@ -196,15 +197,7 @@ keytool -importcert -alias dtcc-issuing -file "$ISSUING_CA" \
     -keystore "$TRUSTSTORE" -storepass "$STOREPASS" -noprompt
 
 echo "======================================"
-echo " Step 2: Using Existing Keystore"
-echo "======================================"
-if [ ! -f "$KEYSTORE" ]; then
-    echo "ERROR: Keystore $KEYSTORE not found!"
-    exit 1
-fi
-
-echo "======================================"
-echo " Step 3: Running JMeter Test"
+echo " Step 2: Running JMeter Test"
 echo "======================================"
 "$JMETER_BIN" -n -t "$TEST_PLAN" -l "$RESULT_FILE" \
     -Djavax.net.ssl.keyStore="$KEYSTORE" \
@@ -218,3 +211,63 @@ echo "======================================"
 echo "======================================"
 echo " Done! Results saved to $RESULT_FILE"
 echo "======================================"
+####################################################################################
+############################windows batch###########################################
+@echo off
+REM ================================
+REM Run JMeter with SSL Certificates (Windows)
+REM ================================
+
+REM --- Try to locate JMeter binary ---
+IF EXIST "%JMETER_HOME%\bin\jmeter.bat" (
+    SET JMETER_BIN=%JMETER_HOME%\bin\jmeter.bat
+) ELSE (
+    WHERE jmeter >nul 2>&1
+    IF %ERRORLEVEL%==0 (
+        FOR /F "delims=" %%i IN ('WHERE jmeter') DO SET JMETER_BIN=%%i
+    ) ELSE (
+        ECHO ERROR: Could not find JMeter. Please install JMeter and add it to PATH or set JMETER_HOME.
+        EXIT /B 1
+    )
+)
+
+ECHO Using JMeter binary: %JMETER_BIN%
+
+REM --- Paths (update if needed) ---
+SET CERT_DIR=C:\apps\res\devtests\certificates
+SET TRUSTSTORE=%CERT_DIR%\truststore.jks
+SET KEYSTORE=%CERT_DIR%\prometheus.res.appdev.dtcc.org.jks
+SET ROOT_CA=%CERT_DIR%\DTCC_CORP_ROOT_CA_R3.crt
+SET ISSUING_CA=%CERT_DIR%\DTCC_CORP_Issuing_CA_R3.crt
+SET TEST_PLAN=C:\apps\res\devtests\testcase\CCW_UCATrades_Demo_DEV_Envi.jmx
+SET RESULT_FILE=C:\apps\res\devtests\testcase\results.jtl
+
+REM --- Password (change if different) ---
+SET STOREPASS=Resobserver123#
+
+ECHO ======================================
+ECHO Step 1: Creating Truststore
+ECHO ======================================
+IF EXIST "%TRUSTSTORE%" DEL "%TRUSTSTORE%"
+
+keytool -importcert -alias dtcc-root -file "%ROOT_CA%" -keystore "%TRUSTSTORE%" -storepass "%STOREPASS%" -noprompt
+keytool -importcert -alias dtcc-issuing -file "%ISSUING_CA%" -keystore "%TRUSTSTORE%" -storepass "%STOREPASS%" -noprompt
+
+ECHO ======================================
+ECHO Step 2: Running JMeter Test
+ECHO ======================================
+"%JMETER_BIN%" -n -t "%TEST_PLAN%" -l "%RESULT_FILE%" ^
+ -Djavax.net.ssl.keyStore="%KEYSTORE%" ^
+ -Djavax.net.ssl.keyStorePassword="%STOREPASS%" ^
+ -Djavax.net.ssl.keyStoreType=JKS ^
+ -Djavax.net.ssl.trustStore="%TRUSTSTORE%" ^
+ -Djavax.net.ssl.trustStorePassword="%STOREPASS%" ^
+ -Dhttps.protocols=TLSv1.2,TLSv1.3 ^
+ -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3
+
+ECHO ======================================
+ECHO Done! Results saved to %RESULT_FILE%
+ECHO ======================================
+
+pause
+######################################################################
