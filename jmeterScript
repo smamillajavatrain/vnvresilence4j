@@ -1,3 +1,98 @@
+| **Format**              | **File Extension(s)**  | **Contains**                                       | **Encoding**                                      | **Common Use Cases**                                   | **Notes**                                                         |
+| ----------------------- | ---------------------- | -------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------- |
+| **PKCS#12**             | `.pfx`, `.p12`         | Private key + public certificate chain (encrypted) | Binary                                            | Windows IIS, Browsers, Java (via import), JMeter, .NET | Requires password; best for distributing both key + cert together |
+| **PEM (PKCS#8)**        | `.pem`, `.key`         | Private key only (PKCS#8 format)                   | Base64 (ASCII) with `-----BEGIN PRIVATE KEY-----` | OpenSSL, Apache, NGINX, Linux servers                  | Usually paired with a separate PEM cert file                      |
+| **PEM (OpenSSL)**       | `.pem`, `.crt`, `.cer` | Public certificate only                            | Base64 (ASCII) with `-----BEGIN CERTIFICATE-----` | Linux servers, NGINX, Apache, Kubernetes secrets       | Used for trust chain or server certs                              |
+| **DER**                 | `.der`, `.cer`         | Public certificate only                            | Binary                                            | Windows, Java truststore                               | Same cert as PEM but in binary form                               |
+| **PKCS#7**              | `.p7b`, `.p7c`         | Certificate chain only (no private key)            | Base64 or Binary                                  | Windows, Java truststores                              | Cannot hold private keys, only cert chain                         |
+| **Java Keystore (JKS)** | `.jks`                 | Private keys and/or trusted certificates           | Java proprietary                                  | Java applications, Tomcat, older JMeter                | Being replaced by PKCS#12 in modern Java                          |
+
+to Create truststore.jks
+hoose PKCS#7 (.p7b) or PEM (OpenSSL) → these formats contain the certificate chain
+(Root CA + Intermediate CA), not your private key.
+
+Download it (example: dtcc_chain.p7b).
+
+Convert/import into Java Truststore (truststore.jks)
+keytool -import -trustcacerts -alias dtcc_root -file dtcc_chain.p7b \
+  -keystore $CERT_DIR/truststore.jks -storepass changeit -storetype JKS
+
+If you downloaded PEM (.crt/.pem):
+keytool -import -trustcacerts -alias dtcc_root -file dtcc_chain.pem \
+  -keystore $CERT_DIR/truststore.jks -storepass changeit -storetype JKS
+Each -alias must be unique per cert. If the .pem or .p7b has multiple certs (Root + Intermediates), import them one by one with different aliases (e.g., dtcc_root, dtcc_intermediate).
+
+Verify contents of truststore:
+keytool -list -v -keystore $CERT_DIR/truststore.jks -storepass changeit
+You should see trustedCertEntry (not PrivateKeyEntry).
+
+JMeter config
+-Djavax.net.ssl.keyStore=$CERT_DIR/prometheus.res.appdev.dtcc.org.pfx \
+-Djavax.net.ssl.keyStorePassword=YourPassword \
+-Djavax.net.ssl.keyStoreType=PKCS12 \
+-Djavax.net.ssl.trustStore=$CERT_DIR/truststore.jks \
+-Djavax.net.ssl.trustStorePassword=changeit
+
+setup-jmeter-ssl.sh
+#!/bin/bash
+# === CONFIGURATION ===
+CERT_DIR="$HOME/jmeter-certs"      # change if needed
+PFX_FILE="$CERT_DIR/client-cert.pfx"   # downloaded from portal
+PFX_PASS="changeit"                    # update with real password
+CA_CHAIN="$CERT_DIR/server-chain.p7b"  # downloaded (p7b/pem) from portal
+TRUST_PASS="changeit"
+
+mkdir -p "$CERT_DIR"
+cd "$CERT_DIR"
+
+echo "== Step 1: Import client PFX into keystore =="
+keytool -importkeystore \
+  -srckeystore "$PFX_FILE" -srcstoretype PKCS12 -srcstorepass "$PFX_PASS" \
+  -destkeystore keystore.p12 -deststoretype PKCS12 -deststorepass "$PFX_PASS"
+
+echo "== Step 2: Create truststore from server CA chain =="
+
+# If file is .p7b, convert first
+if [[ "$CA_CHAIN" == *.p7b ]]; then
+    echo "Converting .p7b to PEM..."
+    openssl pkcs7 -print_certs -in "$CA_CHAIN" -out server-chain.pem
+    CA_CHAIN="$CERT_DIR/server-chain.pem"
+fi
+
+# Import each certificate into truststore
+count=1
+while read -r line; do
+    if [[ $line == -----BEGIN* ]]; then
+        certfile="cert_${count}.crt"
+        echo "$line" > "$certfile"
+    elif [[ $line == -----END* ]]; then
+        echo "$line" >> "$certfile"
+        echo "Importing cert $certfile into truststore..."
+        keytool -import -noprompt -trustcacerts \
+          -alias "ca$count" \
+          -file "$certfile" \
+          -keystore truststore.jks \
+          -storepass "$TRUST_PASS"
+        count=$((count+1))
+    elif [[ -n $certfile ]]; then
+        echo "$line" >> "$certfile"
+    fi
+done < "$CA_CHAIN"
+
+echo "== Step 3: Verify keystore and truststore =="
+keytool -list -v -keystore keystore.p12 -storepass "$PFX_PASS" | grep "Entry type"
+keytool -list -v -keystore truststore.jks -storepass "$TRUST_PASS" | grep "Entry type"
+
+echo "== All done! =="
+echo "Use these JVM args in JMeter startup:"
+echo "-Djavax.net.ssl.keyStore=$CERT_DIR/keystore.p12"
+echo "-Djavax.net.ssl.keyStorePassword=$PFX_PASS"
+echo "-Djavax.net.ssl.keyStoreType=PKCS12"
+echo "-Djavax.net.ssl.trustStore=$CERT_DIR/truststore.jks"
+echo "-Djavax.net.ssl.trustStorePassword=$TRUST_PASS"
+##################################################################################
+##################################################################################
+
 Confirm .pfx password
 keytool -list -v -storetype PKCS12 -keystore /apps/res/devtests/certificates/prometheus.res.appdev.dtcc.org.pfx
 It will prompt for the password. If the password is wrong, you’ll see the same integrity error.
