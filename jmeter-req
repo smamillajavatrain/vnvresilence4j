@@ -1,25 +1,30 @@
+refId → string
+inputPayload → one long JSON string
+
 {
   "refId": "d245336a-9af2-450e-a54e-cbed116a8785",
-  "inputPayload": {
-    "clientId": "jmeter",
-    "clientMessageId": "d245336a-9af2-450e-a54e-cbed116a8785",
-    "securityId": "bc98ad123",
-    "quantity": 7299,
-    "amount": 470045,
-    "transactionType": "SELL",
-    "additionalData": "vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVzqfRyYiKwrxXAsUNTvWNBVQKAMLBLhcudusqdGEuVqojWKanUDmWKNEdusdVRijChyTVFTQboCUGsXKuBaDMcrOHMczvBOyqedsHUpBsmfAWRPOSOenVlfvusSyZeaQkAdekJvYNykjWAlUkPOHCWpQFXnTfDOdxnXehxKdAbTyXQAtwUSfheqLTrxnOYtGOcFYjhpUGKszNQdUnPvoPodQrnQBCaWQzINDLzwKDHmiJcLFCdLGeqPVicCfjtgnKMmNHfXtHgDpTqADApHQoGVcufHEzgzkXtZLZbcLKCSQLNTdnCWLUavecLadMMhYYzszYoyyXCCzIJHPaNiiCNyhWnoDYsdkcrPkxTWOhrhbctJykUhYFMghSQOycxFkMSeWHedHhVrJktGhomULYndqcebUpoEtQEzinUQaDhnXvKJDKGxTMBYGNqzYCMsOcjtWKACHkLyjBPgJVXWPtwTLurPoaZwlkQSlijuzXyRCBJnVQJasITtVRywQkqKJXzcmsMkdaKrMrsjjkgjGcvvBWdQXEfjEZpEIgmbVVpjxWqPSYrQVIoqKjhaPTBkqhZsLSsCqznm",
-    "timeMillis": 1620814820883
-  }
+  "inputPayload": "{\"clientId\":\"jmeter\",\"clientMessageId\":\"d245336a-9af2-450e-a54e-cbed116a8785\",\"securityId\":\"bc98ad123\",\"quantity\":7299,\"amount\":470045,\"transactionType\":\"SELL\",\"additionalData\":\"vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVZYAQKQdJroKnegKcMeLRQTiqLCiSKhNwUJ...\",\"timeMillis\":1620814820883}"
 }
-
 Add an HTTP Header Manager:
 
 Content-Type: application/json
 
 Accept: application/json
 
+{
+  "refId": "d245336a-9af2-450e-a54e-cbed116a8785",
+  "inputPayload": "{\"clientId\":\"jmeter\",\"clientMessageId\":\"d245336a-9af2-450e-a54e-cbed116a8785\",\"securityId\":\"bc98ad123\",\"quantity\":7299,\"amount\":470045,\"transactionType\":\"SELL\",\"additionalData\":\"vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVZYAQKQdJroKnegKcMeLRQTiqLCiSKhNwUJ...rest_of_your_big_string_here...\",\"timeMillis\":1620814820883}"
+}
+
+
 Method: POST
 
 Path: /testdata
 
 Protocol: https
+
+inputPayload is not a JSON object, it is a string containing JSON.
+
+That’s why it has escaped quotes (\") inside.
+
+
