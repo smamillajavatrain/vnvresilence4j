@@ -1,3 +1,5 @@
+refId=d245336a-9af2-450e-a54e-cbed116a8785&inputPayload={"clientId":"jmeter","clientMessageId":"d245336a-9af2-450e-a54e-cbed116a8785","securityId":"bc98ad123","quantity":296044622,"amount":221768699,"transactionType":"SELL","additionalData":"vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVZYAQKQdJroKnegKcMeLRQTi...<rest_of_your blob here>...","timeMillis":1620814820883}
+
 refId → string
 inputPayload → one long JSON string
 
