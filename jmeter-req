@@ -1,0 +1,25 @@
+{
+  "refId": "d245336a-9af2-450e-a54e-cbed116a8785",
+  "inputPayload": {
+    "clientId": "jmeter",
+    "clientMessageId": "d245336a-9af2-450e-a54e-cbed116a8785",
+    "securityId": "bc98ad123",
+    "quantity": 7299,
+    "amount": 470045,
+    "transactionType": "SELL",
+    "additionalData": "vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVzqfRyYiKwrxXAsUNTvWNBVQKAMLBLhcudusqdGEuVqojWKanUDmWKNEdusdVRijChyTVFTQboCUGsXKuBaDMcrOHMczvBOyqedsHUpBsmfAWRPOSOenVlfvusSyZeaQkAdekJvYNykjWAlUkPOHCWpQFXnTfDOdxnXehxKdAbTyXQAtwUSfheqLTrxnOYtGOcFYjhpUGKszNQdUnPvoPodQrnQBCaWQzINDLzwKDHmiJcLFCdLGeqPVicCfjtgnKMmNHfXtHgDpTqADApHQoGVcufHEzgzkXtZLZbcLKCSQLNTdnCWLUavecLadMMhYYzszYoyyXCCzIJHPaNiiCNyhWnoDYsdkcrPkxTWOhrhbctJykUhYFMghSQOycxFkMSeWHedHhVrJktGhomULYndqcebUpoEtQEzinUQaDhnXvKJDKGxTMBYGNqzYCMsOcjtWKACHkLyjBPgJVXWPtwTLurPoaZwlkQSlijuzXyRCBJnVQJasITtVRywQkqKJXzcmsMkdaKrMrsjjkgjGcvvBWdQXEfjEZpEIgmbVVpjxWqPSYrQVIoqKjhaPTBkqhZsLSsCqznm",
+    "timeMillis": 1620814820883
+  }
+}
+
+Add an HTTP Header Manager:
+
+Content-Type: application/json
+
+Accept: application/json
+
+Method: POST
+
+Path: /testdata
+
+Protocol: https
