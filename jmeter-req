@@ -1,3 +1,39 @@
+openssl genrsa -out keynopass.key 2048
+Generate a Certificate Signing Request (CSR)
+openssl req -new -key keynopass.key -out keynopass.csr
+It will ask for details like Country, State, Organization, Common Name (CN).
+For CN, use the server hostname (e.g., swtmcd0061.dtcc.com).
+
+tls_config:
+  ca_file: /apps/res/prometheus-2.19.0.linux-amd64/secrets/keynopass.crt
+  cert_file: /apps/res/prometheus-2.19.0.linux-amd64/secrets/keynopass.crt
+  key_file: /apps/res/prometheus-2.19.0.linux-amd64/secrets/keynopass.key
+  insecure_skip_verify: false
+
+pkill prometheus
+cd /apps/res/prometheus-2.19.0.linux-amd64
+nohup ./prometheus --config.file=prometheus.yml > prometheus.log 2>&1 &
+
+# Search by exact name
+find / -name "filename.txt"
+
+# Case-insensitive search
+find / -iname "filename.txt"
+
+# Search only directories
+find / -type d -name "foldername"
+
+# Search only files
+find / -type f -name "filename.txt"
+
+# Search inside a specific folder (faster than searching from /)
+find /apps/res -name "prometheus*"
+
+locate filename.txt
+locate foldername
+whereis prometheus
+which prometheus
+find / -name "prometheus.yml" 2>/dev/null
 refId=d245336a-9af2-450e-a54e-cbed116a8785&inputPayload={"clientId":"jmeter","clientMessageId":"d245336a-9af2-450e-a54e-cbed116a8785","securityId":"bc98ad123","quantity":296044622,"amount":221768699,"transactionType":"SELL","additionalData":"vHbGAXQDLZSXZVpNFTsjPieBNgfiIlGrdWNyKoVZYAQKQdJroKnegKcMeLRQTi...<rest_of_your blob here>...","timeMillis":1620814820883}
 
 refId → string
