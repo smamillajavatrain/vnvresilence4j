@@ -1,0 +1,64 @@
+Scrape Cycle
+
+[ Prometheus Server ]
+        |
+        |  <-- Scrape request (pull)
+        v
+[ Target Application / Exporter ]
+        |
+        |  --> Response (metrics in text format)
+        v
+[ Prometheus Database (TSDB) ]
+
+Steps
+Prometheus looks at the targets defined in prometheus.yml.
+
+At every scrape_interval (e.g., every 15 seconds), it sends an HTTP GET request.
+
+The target (e.g., /metrics endpoint) responds with metrics in text format.
+
+Prometheus stores this data in its time-series database (TSDB)
+
+Scrape = Prometheus pulling metrics data from a target and storing it in TSDB
+
+create-res-legacy-api-dashboards.sh
+chmod +x create-res-legacy-api-dashboards.sh
+./create-res-legacy-api-dashboards.sh
+
+#!/bin/bash
+
+# Input dashboard JSON (exported from Grafana)
+SOURCE_DASH="cfm-rest-uca.json"
+
+# Replace with your instance (picked from Prometheus up{job="res-legacy-api"})
+INSTANCE="10.10.1.25:8080"
+
+# 1) Create dashboard fixed to res-legacy-api + chosen instance
+sed "s/job=\"cfm-rest-uca\"/job=\"res-legacy-api\", instance=\"$INSTANCE\"/g" \
+  "$SOURCE_DASH" > res-legacy-api-instance1.json
+
+echo "Created res-legacy-api-instance1.json (fixed to job=res-legacy-api, instance=$INSTANCE)"
+
+# 2) Create dashboard that uses variables $job and $instance
+# Add $job and $instance variables into the JSON
+# This assumes your dashboard has no variables yet
+cp "$SOURCE_DASH" res-legacy-api-variable.json
+
+# Replace hardcoded job with $job
+sed -i 's/job=\"cfm-rest-uca\"/job=\"$job\", instance=\"$instance\"/g' res-legacy-api-variable.json
+
+# Insert variable definitions at the top of JSON
+# Adds a job variable pulling all jobs, and an instance variable filtered by job
+sed -i '/"templating": {/,/]/c\
+  "templating": {\n    "list": [\n      {\n        "name": "job",\n        "type": "query",\n        "datasource": "Prometheus",\n        "query": "label_values(up, job)",\n        "refresh": 1,\n        "includeAll": false,\n        "multi": false\n      },\n      {\n        "name": "instance",\n        "type": "query",\n        "datasource": "Prometheus",\n        "query": "label_values(up{job=\\\"$job\\\"}, instance)",\n        "refresh": 1,\n        "includeAll": false,\n        "multi": false\n      }\n    ]\n  }' res-legacy-api-variable.json
+
+echo "Created res-legacy-api-variable.json (with \$job and \$instance dropdowns)"
+
+cd /home/resuser/
+vi create-res-legacy-api-dashboards.sh
+chmod +x create-res-legacy-api-dashboards.sh
+./create-res-legacy-api-dashboards.sh
+
+Open Grafana in browser → Dashboards → New → Import.
+Upload res-legacy-api-instance1.json.
+Map it to your Prometheus datasource → Import.

@@ -1,0 +1,247 @@
+Hit actuator metrics list:
+curl http://localhost:8080/actuator/metrics
+
+Inspect the specific metric:
+curl http://localhost:8080/actuator/metrics/resilience4j.retry.calls
+
+view the Prometheus text scrape:
+curl http://localhost:8080/actuator/prometheus | grep resilience4j
+
+A Prometheus-format snippet
+# HELP resilience4j_retry_calls The number of successful calls without a retry attempt
+# TYPE resilience4j_retry_calls gauge
+resilience4j_retry_calls{kind="failed_with_retry",name="backendA",} 0.0
+resilience4j_retry_calls{kind="failed_without_retry",name="backendA",} 0.0
+resilience4j_retry_calls{kind="successful_without_retry",name="backendA",} 0.0
+resilience4j_retry_calls{kind="successful_with_retry",name="backendA",} 0.0
+
+Grafana panels — suggested panels + PromQL
+Create a Grafana dashboard (data source = your Prometheus). Create a template variable for retry_name (label name) and instance/job if you want.
+
+Important: use the metric form you actually have (resilience4j_retry_calls_total → counter; resilience4j_retry_calls → gauge). Below I show both options.
+
+Panel A — Retries per second (time series) — (counter form)
+
+Query (counters with _total):
+
+sum by (kind, name) (rate(resilience4j_retry_calls_total{name=~"$retry_name"}[1m]))
+
+
+If your metrics are gauge-only, use:
+
+sum by(kind, name) (increase(resilience4j_retry_calls{name=~"$retry_name"}[5m]))
+
+
+Use legend format: {{name}} - {{kind}} to separate backend & kind.
+
+Panel B — Successful-with-retry count (last 5m)
+increase(resilience4j_retry_calls_total{kind="successful_with_retry",name=~"$retry_name"}[5m])
+
+Panel C — % success without retry (last 5m)
+100 *
+sum(increase(resilience4j_retry_calls_total{kind="successful_without_retry",name=~"$retry_name"}[5m]))
+/
+sum(increase(resilience4j_retry_calls_total{name=~"$retry_name"}[5m]))
+
+Panel D — Failed after retries (alerts candidate)
+increase(resilience4j_retry_calls_total{kind="failed_with_retry",name=~"$retry_name"}[5m])
+
+Panel E — Table: counts by kind/name (instant)
+sum by(name,kind) (increase(resilience4j_retry_calls_total[5m]))
+
+
+(If you have the gauge variant, replace _total + increase() with the appropriate gauge functions — e.g. max_over_time(resilience4j_retry_calls{...}[5m]) or use increase() only if metric is a counter.)
+
+Optional — get per-request attempt counts (when default metrics aren’t enough)
+
+Resilience4j’s built-in metrics categorize final outcomes (successful/failed with/without retries) but they don’t export “attempt count per request” by default. To measure attempts per request you must instrument yourself — e.g. subscribe to the Retry EventPublisher and emit a custom meter (counter or histogram) with labels (requestId / operation). Example sketch:
+
+@Autowired MeterRegistry meterRegistry;
+@Autowired RetryRegistry retryRegistry;
+
+@PostConstruct
+public void instrumentRetryAttempts(){
+  retryRegistry.getAllRetries().forEach(retry -> {
+    // increment attempts counter on every retry event (counts attempts)
+    retry.getEventPublisher().onRetry(event -> {
+      meterRegistry.counter("app_retry_attempts_total", "name", retry.getName()).increment();
+      // Optionally include request-specific labels if you can pass request id into the event handler
+    });
+  });
+}
+
+Troubleshooting checklist
+
+If no resilience4j metrics appear: confirm resilience4j-micrometer or the Spring starter and micrometer-registry-prometheus are on the classpath. 
+resilience4j.readme.io
+
+If /actuator/prometheus not listed: check management.endpoints.web.exposure.include and the prometheus export property (management.metrics.export.prometheus.enabled or management.prometheus.metrics.export.enabled) depending on SB version. 
+Stack Overflow
+
+If metrics are gauge vs counter: inspect /actuator/prometheus to see actual metric names and choose PromQL accordingly.
+
+Quick TL;DR checklist you can copy
+
+Add: resilience4j-spring-bootX, resilience4j-micrometer, micrometer-registry-prometheus, spring-boot-starter-actuator. 
+resilience4j.readme.io
++1
+
+Enable endpoints: management.endpoints.web.exposure.include=prometheus,metrics,... and management.endpoint.prometheus.enabled=true. 
+Grafana Labs
+
+Verify curl /actuator/prometheus | grep resilience4j (see sample metrics). 
+resilience4j.readme.io
+
+Add Prometheus scrape job to prometheus.yml. 
+Prometheus
+
+Build Grafana panels using queries like rate(resilience4j_retry_calls_total[1m]) / increase(...[5m]).
+
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "iteration": 1695948000000,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "id": 1,
+      "title": "Retries per Second",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (kind, name) (rate(resilience4j_retry_calls_total{name=~\"$retry_name\"}[1m]))",
+          "legendFormat": "{{name}} - {{kind}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "id": 2,
+      "title": "Successful With Retry (Last 5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "increase(resilience4j_retry_calls_total{kind=\"successful_with_retry\",name=~\"$retry_name\"}[5m])",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "id": 3,
+      "title": "Success Without Retry (%)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "100 * sum(increase(resilience4j_retry_calls_total{kind=\"successful_without_retry\",name=~\"$retry_name\"}[5m])) / sum(increase(resilience4j_retry_calls_total{name=~\"$retry_name\"}[5m]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "id": 4,
+      "title": "Failed After Retries",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "increase(resilience4j_retry_calls_total{kind=\"failed_with_retry\",name=~\"$retry_name\"}[5m])",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "id": 5,
+      "title": "Retry Calls Table (Last 5m)",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum by(name,kind) (increase(resilience4j_retry_calls_total[5m]))",
+          "legendFormat": "{{name}} - {{kind}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["resilience4j", "retry"],
+  "templating": {
+    "list": [
+      {
+        "name": "retry_name",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(resilience4j_retry_calls_total, name)",
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": ".*" }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Resilience4j Retry Dashboard",
+  "uid": "resilience4j-retry-dashboard"
+}
+
+Panels for:
+
+Retries per second (time series)
+
+Successful with retry
+
+Success without retry (%)
+
+Failed after retries
+
+Table of counts per kind/name
+
+Template variable $retry_name for filtering by retry name
+
+Prometheus counter-based metrics (_total) with increase() and rate()
