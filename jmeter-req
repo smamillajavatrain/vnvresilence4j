@@ -1,3 +1,45 @@
+curl https://gremlin.com/install.sh | bash
+sudo gremlin init
+sudo gremlin init --teamId <TEAM_ID> --secret <SECRET_KEY>
+gremlin check
+
+Target By Hostname / IP
+
+Once the agent is connected, you’ll see your DEV server under “Hosts.”
+
+Step 1: Install Prerequisites
+Make sure your DEV server has:
+curl
+systemd (or init.d)
+Outbound internet access to Gremlin (ports 443, 53)
+Step 2: Download and Install the Gremlin Agent
+curl https://gremlin.com/install.sh | sudo bash
+This script will:
+Add Gremlin’s package repo
+Install the Gremlin client and daemon
+
+Step 3: Initialize Gremlin
+Go to: Team Settings → Configuration
+Copy Team ID and Secret
+sudo gremlin init
+
+Team ID
+Secret Key
+Environment name (you can call it DEV)
+Whether to start the Gremlin daemon (choose Yes)
+
+Start and Enable Gremlin Daemon
+sudo systemctl enable gremlind
+sudo systemctl start gremlind
+
+Check status:
+sudo systemctl status gremlind
+
+Verify Connection
+gremlin check
+
+If your server has multiple roles, 
+you can also tag it during gremlin init (e.g., service=dev-db), which makes it easier to filter later in the UI.
 run_jm_prometheus.bat
 @echo off
 
