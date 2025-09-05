@@ -1,3 +1,52 @@
+run_jm_prometheus.bat
+@echo off
+
+set CERT=prometheus.res.appdev.dtcc.org.crt
+set KEY=nopass.key
+set CACERT=prometheus.res.appdev.dtcc.org.crt
+set PASSWORD=Resobserve123#
+set HOST=swtmcd0061.dtcc.com
+set PORT=20001
+
+echo Running JMeter with SSL...
+jmeter -Djavax.net.ssl.keyStore="C:\smamilla\dev-certificates\latest\Dev\args\prometheus.res.appdev.dtcc.org.pfx" ^
+ -Djavax.net.ssl.keyStoreType="PKCS12" ^
+ -Djavax.net.ssl.keyStorePassword="%PASSWORD%"
+
+echo Running curl commands...
+
+curl -kv --trace --trace-time https://%HOST%:%PORT%/actuator/prometheus --cert %CERT% --key %KEY% --cacert %CACERT% --pass %PASSWORD%
+curl -kv --trace --trace-time https://%HOST%:%PORT%/getStats --cert %CERT% --key %KEY% --cacert %CACERT% --pass %PASSWORD%
+curl -kv --trace --trace-time https://%HOST%:%PORT%/getStatsCount --cert %CERT% --key %KEY% --cacert %CACERT% --pass %PASSWORD%
+
+linux script:
+#!/bin/bash
+
+set -e
+
+# Variables
+CERT="./prometheus.res.appdev.dtcc.org.crt"
+KEY="./nopass.key"
+CACERT="./prometheus.res.appdev.dtcc.org.crt"
+PASSWORD="Resobserve123#"
+HOST="swtmcd0061.dtcc.com"
+PORT="20001"
+
+echo "Running curl commands against $HOST:$PORT ..."
+
+# Curl 1 - actuator/prometheus
+curl -kv --trace --trace-time https://$HOST:$PORT/actuator/prometheus \
+  --cert $CERT --key $KEY --cacert $CACERT --pass $PASSWORD
+
+# Curl 2 - getStats
+curl -kv --trace --trace-time https://$HOST:$PORT/getStats \
+  --cert $CERT --key $KEY --cacert $CACERT --pass $PASSWORD
+
+# Curl 3 - getStatsCount
+curl -kv --trace --trace-time https://$HOST:$PORT/getStatsCount \
+  --cert $CERT --key $KEY --cacert $CACERT --pass $PASSWORD
+
+
 openssl genrsa -out keynopass.key 2048
 Generate a Certificate Signing Request (CSR)
 openssl req -new -key keynopass.key -out keynopass.csr
