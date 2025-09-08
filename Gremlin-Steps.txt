@@ -1,3 +1,159 @@
+Attack Steps (DB Chaos Testing)
+Step 1 — Network Blackhole (పూర్తి నష్టం)
+
+Category: Network → Blackhole
+
+Direction: Outbound (అంటే DB కి వెళ్ళే ట్రాఫిక్‌ని ఆపేస్తుంది)
+
+Destination host: మీ DB hostname/IP
+
+Port: DB port (ఉదా: Postgres → 5432, MySQL → 3306, Oracle → 1521)
+
+Length: 60 సెకన్లు
+
+ఎప్పుడు ఏమి జరుగుతుంది?
+
+App నుండి DB కి వెళ్ళే request పూర్తిగా fail అవుతుంది.
+
+మీరు ఇలాంటి errors చూడగలరు:
+
+SQLTransientConnectionException
+
+CannotCreateTransactionException
+
+PSQLException: Connection timed out
+
+ConnectException
+
+ఇది ఏమి నిరూపిస్తుంది?
+
+Retry + Backoff (మళ్లీ ప్రయత్నించే లాజిక్) సరిగ్గా పనిచేస్తుందో లేదో.
+
+60 సెకన్ల తర్వాత కనెక్షన్ తిరిగి వస్తే App తిరిగి సక్సెస్ అవ్వాలి.
+
+Step 2 — Network Latency (DB slow అవ్వడం)
+
+Category: Network → Latency
+
+Direction: Outbound
+
+Destination host/port: మీ DB host/port
+
+Latency: 2000 ms (2 సెకన్ల ఆలస్యం)
+
+Jitter: ±500 ms (ఎప్పుడో 1.5 సెకన్లు, ఎప్పుడో 2.5 సెకన్లు)
+
+Length: 120 సెకన్లు
+
+ఎప్పుడు ఏమి జరుగుతుంది?
+
+DB queries చాలా slow గా run అవుతాయి.
+
+మీరు ఇలాంటి errors చూడగలరు:
+
+SQLTimeoutException
+
+QueryTimeoutException
+
+TransactionTimedOutException
+
+ఇది ఏమి నిరూపిస్తుంది?
+
+Timeout properly trigger అవుతుందా?
+
+Retry logic వర్క్ అవుతుందా?
+
+Successful calls logs లో successful_with_retry గా కనిపించాలి.
+
+Step 3 — Network Packet Loss (flaky network)
+
+Category: Network → Packet Loss
+
+Direction: Outbound
+
+Destination host/port: మీ DB host/port
+
+Loss: 50% packets drop అవుతాయి
+
+Length: 120 సెకన్లు
+
+ఎప్పుడు ఏమి జరుగుతుంది?
+
+కొంత traffic వెళ్తుంది, కొంత fail అవుతుంది → intermittent failures వస్తాయి.
+
+మీరు ఇలాంటి errors చూడగలరు:
+
+Read timed out
+
+SQLTransientConnectionException (intermittent)
+
+ఇది ఏమి నిరూపిస్తుంది?
+
+App కి partial failures వచ్చినా కూడా system పూర్తిగా down కాకూడదు.
+
+Success + Retry mix గా వర్క్ అవ్వాలి.
+
+⚠️ Halt behavior:
+Gremlin లో “Halt attack if a health check alarms” enable చేసి ఉంచండి.
+→ అంటే system లో health check fail అయితే attack ఆటోమేటిక్ గా ఆగిపోతుంది (auto rollback).
+
+1. Network Blackhole (DB total loss)
+{
+  "attacks": [
+    {
+      "command": "blackhole",
+      "target": {
+        "type": "Exact",
+        "addresses": ["<DB_HOST>"],
+        "ports": ["5432"] 
+      },
+      "args": {
+        "length": "60",
+        "direction": "outbound"
+      }
+    }
+  ]
+}
+
+2. Network Latency (slow DB)
+{
+  "attacks": [
+    {
+      "command": "latency",
+      "target": {
+        "type": "Exact",
+        "addresses": ["<DB_HOST>"],
+        "ports": ["5432"]
+      },
+      "args": {
+        "length": "120",
+        "latency": "2000",
+        "jitter": "500",
+        "direction": "outbound"
+      }
+    }
+  ]
+}
+
+3. Network Packet Loss (flaky network)
+{
+  "attacks": [
+    {
+      "command": "packet_loss",
+      "target": {
+        "type": "Exact",
+        "addresses": ["<DB_HOST>"],
+        "ports": ["5432"]
+      },
+      "args": {
+        "length": "120",
+        "percent": "50",
+        "direction": "outbound"
+      }
+    }
+  ]
+}
+
 0) Prereqs (quick)
 
 Gremlin agent installed on your application hosts or k8s pods (you usually don’t install it on a managed DB like RDS/Azure DB).
