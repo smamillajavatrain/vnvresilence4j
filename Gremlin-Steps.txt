@@ -1,3 +1,74 @@
+Grafana లో ఎలా చూడాలి?
+
+Prometheus datasource Grafana లో connect చేయండి.
+(Spring Boot + Micrometer / DB Exporter → Prometheus కి metrics పంపుతుంది).
+
+Grafana లో కొత్త Dashboard సృష్టించండి.
+
+Useful Panels:
+
+Line Graph → rate(http_server_requests_seconds_sum[1m]) / rate(http_server_requests_seconds_count[1m])
+👉 ఇది average latency చూపుతుంది. Latency Attack సమయంలో line spike అవుతుంది.
+
+Bar Graph → resilience4j_retry_calls_total{kind="failed_with_retry"}
+👉 Retry లు ఎన్ని జరిగాయో చూపిస్తుంది.
+
+Gauge → DB Connection Pool (HikariCP):
+
+hikaricp_connections_active
+
+hikaricp_connections_timeout_total
+
+Table Panel → Errors by type (sql_error_count లేదా logs నుండి derive చేయవచ్చు)
+
+Visualization Example (Chaos Test సమయంలో మీరు ఏమి చూస్తారు?)
+
+Step 1 (Blackhole) → Connections timeout అవుతాయి → Grafana లో
+
+connection_timeout_total graph పైకి వెళుతుంది
+
+Errors spike అవుతాయి
+
+Step 2 (Latency) → Response time పెరుగుతుంది → Grafana లో
+
+Average latency line graph లో 2000ms+ కనిపిస్తుంది
+
+Retries పెరుగుతాయి
+
+Step 3 (Packet Loss) → Some succeed, some fail → Grafana లో
+
+Success + Error graphs రెండూ mix అవుతాయి
+
+Gremlin Attacks రన్ చేస్తున్నప్పుడు, DB + App నుండి ఈ metrics చూడాలి:
+
+DB Connection Pool Metrics
+
+Active connections
+
+Failed connections
+
+Connection timeout count
+
+Application Metrics (Spring Boot / Micrometer / Prometheus)
+
+resilience4j_retry_calls_total → ఎంత retries అయ్యాయి
+
+resilience4j_circuitbreaker_calls_total → circuit breaker triggered అవుతోందా
+
+http_server_requests_seconds_count → API requests count
+
+http_server_requests_seconds_sum → request duration (latency పెరుగుతుందా చూడటానికి)
+
+System Metrics (Node/Host level)
+
+Network RTT (round-trip time)
+
+Packet loss %
+
+Error logs per second
+
+Grafana లో ఎలా చూడాలి?
+#########################################################################
 Attack Steps (DB Chaos Testing)
 Step 1 — Network Blackhole (పూర్తి నష్టం)
 
