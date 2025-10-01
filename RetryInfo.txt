@@ -1,0 +1,90 @@
+DbRetryConfig
+
+private static final long INITIAL_INTERVAL_MS = 5000L;   // 5s
+    private static final double MULTIPLIER = 3.0;            // triple
+    private static final double RANDOMIZATION_FACTOR = 0.3;  // ±30% jitter (we'll implement full jitter)
+    private static final long MAX_INTERVAL_MS = 240000L;     // 4 minutes
+    private static final int MAX_ATTEMPTS = 6;
+
+    public static Retry createDbRetry() {
+        IntervalBiFunction<Object> intervalBiFunction = createAdaptiveIntervalBiFunction(
+                INITIAL_INTERVAL_MS, MULTIPLIER, RANDOMIZATION_FACTOR, MAX_INTERVAL_MS);
+
+private static IntervalBiFunction<Object> createAdaptiveIntervalBiFunction(
+            long initialIntervalMs, double multiplier, double randomizationFactor, long maxIntervalMs) {
+
+        return (attempt, throwable) -> {
+            // 1) compute exponential growth safely in double
+            int safeAttempt = Math.max(1, attempt); // attempt starts at 1
+            double raw = initialIntervalMs * Math.pow(multiplier, (double) (safeAttempt - 1));
+
+            // 2) clamp raw to maxIntervalMs
+            double capped = Math.min((double) maxIntervalMs, raw);
+
+            // 3) adapt based on exception type (example heuristics)
+            double adjustedBase = capped;
+
+            if (throwable != null) {
+                // Example: if it's a persistent connection error, be more conservative (increase base)
+                if (throwable instanceof java.sql.SQLTransientConnectionException) {
+                    // If many attempts have failed, escalate the base to prefer longer waits
+                    if (safeAttempt >= 3) {
+                        adjustedBase = Math.min((double) maxIntervalMs, capped * 1.5); // 50% more
+                    }
+                } else if (throwable instanceof java.sql.SQLRecoverableException) {
+                    // treat recoverable as slightly more severe
+                    adjustedBase = Math.min((double) maxIntervalMs, capped * 1.25);
+                } else if (throwable instanceof org.springframework.dao.CannotAcquireLockException
+                        || throwable.getClass().getSimpleName().toLowerCase().contains("deadlock")) {
+                    // deadlocks — you might want a smaller immediate delay to retry faster or slightly larger depending on strategy
+                    adjustedBase = Math.min((double) maxIntervalMs, Math.max(initialIntervalMs, capped / 2.0));
+                }
+                // Add more exception-specific rules here if needed
+            }
+
+            // 4) Apply FULL JITTER: uniformly random between 0 and adjustedBase
+            long upperBound;
+            if (adjustedBase >= (double) Long.MAX_VALUE) {
+                upperBound = Long.MAX_VALUE;
+            } else {
+                // add 1 because nextLong is exclusive of upper bound
+                long ab = (long) Math.max(0, Math.floor(adjustedBase));
+                upperBound = (ab == Long.MAX_VALUE) ? Long.MAX_VALUE : ab + 1L;
+            }
+
+            long sleep;
+            if (upperBound == Long.MAX_VALUE) {
+                sleep = ThreadLocalRandom.current().nextLong(0L, Long.MAX_VALUE);
+            } else {
+                sleep = ThreadLocalRandom.current().nextLong(0L, upperBound);
+            }
+
+            // 5) final safety clamp
+            return Math.min(sleep, maxIntervalMs);
+        };
+    }
+
+    private static boolean isTransientDbException(Throwable t) {
+        if (t == null) return false;
+        return (t instanceof java.sql.SQLTransientConnectionException)
+                || (t instanceof java.sql.SQLRecoverableException)
+                || (t instanceof org.springframework.dao.TransientDataAccessResourceException);
+    }
+
+Explanation of behaviors & choices
+
+Attempt math: attempt starts at 1 (first try). We compute initial * multiplier^(attempt-1) so attempt 1 => initial, attempt 2 => initial * multiplier, etc.
+
+Double arithmetic: we compute raw as double to avoid integer overflow for large exponents, then clamp to maxIntervalMs.
+
+Exception-aware changes: we increase or decrease the base depending on exception type. Example heuristics in code:
+
+SQLTransientConnectionException (persistent connection errors): if attempts >= 3, increase by 50% so the client waits longer between later attempts (gives DB/network a better chance to recover).
+
+SQLRecoverableException: slightly increase (25%).
+
+Deadlocks: example shows how to treat differently (here we reduce base to retry faster — customize to your policy).
+
+Full jitter: we pick a random uniform value from 0 up to adjustedBase. This is simple and effective to avoid synchronized retries.
+
+Clamping: final return is clamped to maxIntervalMs
