@@ -1,8 +1,71 @@
 DbRetryConfig
 
+private IntervalBiFunction<Object> createAdaptiveIntervalBiFunction(
+        long initialIntervalMs, double multiplier, long maxIntervalMs) {
+
+    return (Integer attempt, Object either) -> {
+        // Compute exponential base delay: initial * multiplier^(attempt-1)
+        double pow = Math.pow(multiplier, Math.max(0, attempt - 1));
+        double baseDelay = initialIntervalMs * pow;
+
+        // Cap the delay
+        double cappedDelay = Math.min(baseDelay, (double) maxIntervalMs);
+
+        // Apply jitter (RANDOMIZATION_FACTOR = Â±30%)
+        double minWithJitter = Math.max(0.0, cappedDelay * (1.0 - RANDOMIZATION_FACTOR));
+        double maxWithJitter = cappedDelay * (1.0 + RANDOMIZATION_FACTOR);
+
+        long minLong = (long) Math.floor(minWithJitter);
+        long maxLong = (long) Math.ceil(maxWithJitter);
+
+        long chosen;
+        if (maxLong <= minLong) {
+            chosen = minLong;
+        } else {
+            chosen = ThreadLocalRandom.current().nextLong(minLong, maxLong + 1);
+        }
+
+        LOGGER.info("Retry attempt={} â†’ sleeping {} ms (base={} ms, jitter=[{}..{}])",
+                attempt, chosen, (long) cappedDelay, minLong, maxLong);
+
+        return chosen;
+    };
+}
+
+@Bean(name = "dbRetryConfig")
+@Scope(BeanDefinition.SCOPE_PROTOTYPE)
+public RetryConfig dbRetryConfig() {
+    IntervalBiFunction<Object> intervalBiFunction =
+            createAdaptiveIntervalBiFunction(
+                    baseDelay,              // e.g., 15000 from config
+                    multiplier,             // e.g., 3.0 from application.yml
+                    maxDelay                // cap, e.g., 600000 (10 min)
+            );
+
+    return RetryConfig.custom()
+            .maxAttempts(Integer.parseInt(ccwConfigInterface.getPropValue("spring.app.db.maxAttempts")))
+            .waitDuration(Duration.ofMillis(Long.parseLong(ccwConfigInterface.getPropValue("spring.app.db.waitDuration"))))
+            .intervalBiFunction(intervalBiFunction)
+            .retryOnException(DbResilienceRetryConfig::isTransientDbException)
+            .ignoreExceptions(IllegalArgumentException.class)
+            .failAfterMaxAttempts(true)
+            .build();
+}
+
+spring:
+  app:
+    db:
+      maxAttempts: 5
+      waitDuration: 1000    # base wait (will be overridden by intervalBiFunction)
+      multiplier: 3.0
+      baseDelay: 15000      # 15 sec
+      maxDelay: 600000      # 10 min
+######################################################################################################
+#########################################################################################################
+#########################################################################################################
 private static final long INITIAL_INTERVAL_MS = 5000L;   // 5s
     private static final double MULTIPLIER = 3.0;            // triple
-    private static final double RANDOMIZATION_FACTOR = 0.3;  // ±30% jitter (we'll implement full jitter)
+    private static final double RANDOMIZATION_FACTOR = 0.3;  // Â±30% jitter (we'll implement full jitter)
     private static final long MAX_INTERVAL_MS = 240000L;     // 4 minutes
     private static final int MAX_ATTEMPTS = 6;
 
@@ -36,7 +99,7 @@ private static IntervalBiFunction<Object> createAdaptiveIntervalBiFunction(
                     adjustedBase = Math.min((double) maxIntervalMs, capped * 1.25);
                 } else if (throwable instanceof org.springframework.dao.CannotAcquireLockException
                         || throwable.getClass().getSimpleName().toLowerCase().contains("deadlock")) {
-                    // deadlocks — you might want a smaller immediate delay to retry faster or slightly larger depending on strategy
+                    // deadlocks â€” you might want a smaller immediate delay to retry faster or slightly larger depending on strategy
                     adjustedBase = Math.min((double) maxIntervalMs, Math.max(initialIntervalMs, capped / 2.0));
                 }
                 // Add more exception-specific rules here if needed
@@ -83,7 +146,7 @@ SQLTransientConnectionException (persistent connection errors): if attempts >= 3
 
 SQLRecoverableException: slightly increase (25%).
 
-Deadlocks: example shows how to treat differently (here we reduce base to retry faster — customize to your policy).
+Deadlocks: example shows how to treat differently (here we reduce base to retry faster â€” customize to your policy).
 
 Full jitter: we pick a random uniform value from 0 up to adjustedBase. This is simple and effective to avoid synchronized retries.
 
