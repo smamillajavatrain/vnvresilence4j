@@ -1,5 +1,5 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {"list": []},
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
@@ -8,12 +8,15 @@
   "panels": [
     {
       "type": "graph",
+      "id": 1,
       "title": "Resilience4j Retry - Calls Rate",
       "gridPos": {"h":8,"w":12,"x":0,"y":0},
       "targets": [
         {
           "expr": "sum by (kind, name)(rate({__name__=~\"resilience4j\\.retry\\.calls|resilience4j_retry_calls\", job=\"$job\"}[1m]))",
-          "legendFormat": "{{name}} - {{kind}}"
+          "legendFormat": "{{name}} - {{kind}}",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -23,12 +26,15 @@
     },
     {
       "type": "graph",
+      "id": 2,
       "title": "Spring Retry Attempts",
       "gridPos": {"h":8,"w":12,"x":12,"y":0},
       "targets": [
         {
           "expr": "sum by (name)(rate({__name__=~\"spring_retry_.*|spring_retry_attempts_total\", job=\"$job\"}[1m]))",
-          "legendFormat": "{{name}}"
+          "legendFormat": "{{name}}",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -37,12 +43,15 @@
     },
     {
       "type": "graph",
+      "id": 3,
       "title": "HTTP Server Requests / sec",
       "gridPos": {"h":8,"w":12,"x":0,"y":8},
       "targets": [
         {
           "expr": "sum(rate(http_server_requests_seconds_count{job=\"$job\"}[1m]))",
-          "legendFormat": "HTTP Server Requests"
+          "legendFormat": "HTTP Server Requests",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -52,12 +61,15 @@
     },
     {
       "type": "graph",
+      "id": 4,
       "title": "HTTP Client Requests / sec",
       "gridPos": {"h":8,"w":12,"x":12,"y":8},
       "targets": [
         {
           "expr": "sum(rate(http_client_requests_seconds_count{job=\"$job\"}[1m]))",
-          "legendFormat": "HTTP Client Requests"
+          "legendFormat": "HTTP Client Requests",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -66,12 +78,15 @@
     },
     {
       "type": "graph",
+      "id": 5,
       "title": "System CPU Usage (%)",
       "gridPos": {"h":8,"w":12,"x":0,"y":16},
       "targets": [
         {
           "expr": "avg(system_cpu_usage{job=\"$job\"}) * 100",
-          "legendFormat": "System CPU Usage"
+          "legendFormat": "System CPU Usage",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -81,12 +96,15 @@
     },
     {
       "type": "graph",
+      "id": 6,
       "title": "Process CPU Usage (%)",
       "gridPos": {"h":8,"w":12,"x":12,"y":16},
       "targets": [
         {
           "expr": "process_cpu_usage{job=\"$job\"} * 100",
-          "legendFormat": "Process CPU Usage"
+          "legendFormat": "Process CPU Usage",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -96,12 +114,15 @@
     },
     {
       "type": "graph",
+      "id": 7,
       "title": "DB Request Handler Duration (max, seconds)",
       "gridPos": {"h":8,"w":12,"x":0,"y":24},
       "targets": [
         {
           "expr": "max_over_time({__name__=~\"dbrequesthandler_duration_seconds_max|db_request_handler_duration_seconds_max\", job=\"$job\"}[5m])",
-          "legendFormat": "DB Handler Duration Max"
+          "legendFormat": "DB Handler Duration Max",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -111,12 +132,15 @@
     },
     {
       "type": "graph",
+      "id": 8,
       "title": "Hibernate Entities Inserts / Updates",
       "gridPos": {"h":8,"w":12,"x":12,"y":24},
       "targets": [
         {
           "expr": "sum(rate({__name__=~\"hibernate_entities_.*(inserts|onserts)_total\", job=\"$job\"}[5m])) by (__name__)",
-          "legendFormat": "{{__name__}}"
+          "legendFormat": "{{__name__}}",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -125,12 +149,15 @@
     },
     {
       "type": "graph",
+      "id": 9,
       "title": "JVM Heap Memory Used (bytes)",
       "gridPos": {"h":8,"w":12,"x":0,"y":32},
       "targets": [
         {
           "expr": "jvm_memory_used_bytes{area=\"heap\", job=\"$job\"}",
-          "legendFormat": "{{instance}}"
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "datasource": "Prometheus"
         }
       ],
       "lines": true,
@@ -148,10 +175,10 @@
         "name": "job",
         "label": "Job",
         "query": "label_values(up, job)",
-        "current": { "text": "res-legacy-api", "value": "res-legacy-api" }
+        "current": {"text": "res-legacy-api", "value": "res-legacy-api"}
       }
     ]
   },
-  "title": "res-legacy-api - Spring/Resilience4j Metrics (Graph Panels)",
+  "title": "res-legacy-api - Spring/Resilience4j Metrics",
   "version": 1
 }
