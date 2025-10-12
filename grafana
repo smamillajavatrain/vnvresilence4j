@@ -1,0 +1,157 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Resilience4j Retry - Calls Rate",
+      "gridPos": {"h":8,"w":12,"x":0,"y":0},
+      "targets": [
+        {
+          "expr": "sum by (kind, name)(rate({__name__=~\"resilience4j\\.retry\\.calls|resilience4j_retry_calls\", job=\"$job\"}[1m]))",
+          "legendFormat": "{{name}} - {{kind}}"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"ops","label":"calls/s"}]
+    },
+    {
+      "type": "graph",
+      "title": "Spring Retry Attempts",
+      "gridPos": {"h":8,"w":12,"x":12,"y":0},
+      "targets": [
+        {
+          "expr": "sum by (name)(rate({__name__=~\"spring_retry_.*|spring_retry_attempts_total\", job=\"$job\"}[1m]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1
+    },
+    {
+      "type": "graph",
+      "title": "HTTP Server Requests / sec",
+      "gridPos": {"h":8,"w":12,"x":0,"y":8},
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"$job\"}[1m]))",
+          "legendFormat": "HTTP Server Requests"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"ops","label":"req/sec"}]
+    },
+    {
+      "type": "graph",
+      "title": "HTTP Client Requests / sec",
+      "gridPos": {"h":8,"w":12,"x":12,"y":8},
+      "targets": [
+        {
+          "expr": "sum(rate(http_client_requests_seconds_count{job=\"$job\"}[1m]))",
+          "legendFormat": "HTTP Client Requests"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1
+    },
+    {
+      "type": "graph",
+      "title": "System CPU Usage (%)",
+      "gridPos": {"h":8,"w":12,"x":0,"y":16},
+      "targets": [
+        {
+          "expr": "avg(system_cpu_usage{job=\"$job\"}) * 100",
+          "legendFormat": "System CPU Usage"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"percent","label":"CPU %"}]
+    },
+    {
+      "type": "graph",
+      "title": "Process CPU Usage (%)",
+      "gridPos": {"h":8,"w":12,"x":12,"y":16},
+      "targets": [
+        {
+          "expr": "process_cpu_usage{job=\"$job\"} * 100",
+          "legendFormat": "Process CPU Usage"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"percent"}]
+    },
+    {
+      "type": "graph",
+      "title": "DB Request Handler Duration (max, seconds)",
+      "gridPos": {"h":8,"w":12,"x":0,"y":24},
+      "targets": [
+        {
+          "expr": "max_over_time({__name__=~\"dbrequesthandler_duration_seconds_max|db_request_handler_duration_seconds_max\", job=\"$job\"}[5m])",
+          "legendFormat": "DB Handler Duration Max"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"s"}]
+    },
+    {
+      "type": "graph",
+      "title": "Hibernate Entities Inserts / Updates",
+      "gridPos": {"h":8,"w":12,"x":12,"y":24},
+      "targets": [
+        {
+          "expr": "sum(rate({__name__=~\"hibernate_entities_.*(inserts|onserts)_total\", job=\"$job\"}[5m])) by (__name__)",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1
+    },
+    {
+      "type": "graph",
+      "title": "JVM Heap Memory Used (bytes)",
+      "gridPos": {"h":8,"w":12,"x":0,"y":32},
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{area=\"heap\", job=\"$job\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "fill": 1,
+      "yaxes": [{"format":"bytes"}]
+    }
+  ],
+  "schemaVersion": 26,
+  "tags": ["spring","prometheus","micrometer"],
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "job",
+        "label": "Job",
+        "query": "label_values(up, job)",
+        "current": { "text": "res-legacy-api", "value": "res-legacy-api" }
+      }
+    ]
+  },
+  "title": "res-legacy-api - Spring/Resilience4j Metrics (Graph Panels)",
+  "version": 1
+}
