@@ -1,0 +1,138 @@
+Quick summary up front
+
+hikari.connectionTimeout = 15000 ms means each attempt to DataSource.getConnection() will wait up to 15 seconds for a valid connection before throwing a PoolTimeoutException (or SQLTransientConnectionException).
+
+oracle.net.CONNECT_TIMEOUT = 15000 ms (driver-level TCP connect) is the same number — so a driver connect attempt can take up to 15 s, which fits inside Hikari’s wait window. If the driver blocks for the full 15 s, Hikari will likely fail at or just before ~15 s.
+
+maxPoolSize = 10 matters only if many concurrent threads try to borrow connections; with your JMeter 1-thread test it's not a limiting factor, but in real load it prevents >10 concurrent physical connections being created.
+
+Your exponential backoff delays (retry intervals) are: 5s, 15s, 45s, 135s, 240s (capped). The sum of these delays = 440 s (7 min 20 s). Each retry attempt itself can take up to 15 s waiting for a connection (plus the time to fail a statement or do work). That adds to total elapsed time.
+
+How retries behave now (mechanics, step-by-step)
+
+Initial attempt fails (DB restart strikes in-flight query or new connection fails). That transaction is rolled back by Spring. Spring Retry will schedule Retry #1 after the first backoff (5 s).
+
+Retry invocation start: Spring Retry calls the method again; a new transaction begins and the code calls dataSource.getConnection().
+
+Hikari will first try to hand an idle valid connection (fast if available).
+
+If none, Hikari will create a physical connection using the driver. The driver’s TCP connect may block up to oracle.net.CONNECT_TIMEOUT = 15000 ms. Hikari will allow the getConnection() call to run for up to 15000 ms before deciding it timed out. If getConnection() times out, Hikari throws PoolTimeoutException.
+
+If the driver successfully connects and the statement starts executing, oracle.net.query_timeout = 15 s will cancel any SQL execution that exceeds 15 s.
+
+If connection acquisition fails within 15 s, that attempt throws a connection exception. Spring Retry logs it (if configured), then waits the next backoff period (e.g., 15 s for Retry #2) and retries again.
+
+If driver connects within 15 s and the query runs, the query may still fail (if DB not ready) with JDBC errors — treated as retryable if you configured the exception list accordingly.
+
+Each retry is a fresh transaction. Side-effects from failed attempts are rolled back; ensure idempotency
+
+Timing math — show the numbers (step-by-step)
+
+Backoff delays (we use the same previously computed values):
+
+Retry delays sequence (ms): 5000, 15000, 45000, 135000, 240000.
+Sum of delays = 5,000 + 15,000 + 45,000 + 135,000 + 240,000
+= (5,000 + 15,000) + (45,000 + 135,000) + 240,000
+= 20,000 + 180,000 + 240,000
+= 440,000 ms = 440 s = 7 min 20 s.
+
+Now each retry attempt may spend up to:
+
+getConnection() wait ≤ 15,000 ms (hikari.connectionTimeout), plus
+
+possible statement execution time before failing (could be near-instant if DB down or up to oracle.net.query_timeout = 15,000 ms if the statement blocks).
+
+For conservative worst-case planning, assume each retry attempt that must create a connection takes the full 15 s and then fails. So approximate elapsed time from the moment of the first failure until all retries finish (worst-case) is:
+
+Let A = number of retries = 5 (after initial failure). For each retry i, elapsed = connectionAttemptTime_i + backoffDelay_i (except after the last retry backoff we stop). If every connection attempt uses full 15 s and that attempt fails, then:
+
+Total worst-case time = sum over i=1..5 of (connectionAttemptTime_i + backoffDelay_i)
+= (15s + 5s) + (15s + 15s) + (15s + 45s) + (15s + 135s) + (15s + 240s)
+= (20s) + (30s) + (60s) + (150s) + (255s)
+Now add: 20 + 30 = 50; 50 + 60 = 110; 110 + 150 = 260; 260 + 255 = 515 s.
+
+So ~515 seconds ≈ 8 minutes 35 seconds worst-case from first failure until final retry gives up (not counting the time of the initial attempt that failed). If some attempts succeed quicker (e.g., connection succeeds in <15s), actual elapsed will be shorter.
+
+Concrete downtime examples (what will likely happen)
+
+Assume initial failure happens at t = 0 (DB becomes unreachable or in-flight query fails). Retries behave as follows:
+
+Example A — DB down for 20 seconds
+
+t=0: initial failure.
+
+Retry #1 scheduled at t=5s — at t=5s getConnection() is attempted; Hikari can wait up to 15s (until t≈20s).
+
+If DB becomes available at ~t=20s, the driver may finish connect at the end of that window and the retry could succeed (depending on exact timings, validation and pool state).
+
+Likely outcome: Retry #1 or Retry #2 succeeds (because DB returned before or around driver/Hikari timeouts).
+
+Net result: one or two retry attempts, small total delay — request succeeds.
+
+Example B — DB down for 90 seconds
+
+t=0: initial failure.
+
+Ret #1: t=5s → attempt (may wait up to t≈20s) — likely fails if DB still down.
+
+Ret #2: scheduled 15s after Ret #1 failure → occurs around t≈20s + 15s = t≈35s → attempt (wait until t≈50s) — still down, likely fails.
+
+Ret #3: scheduled 45s after → scheduled at t≈50s + 45s = t≈95s → by t≈95s DB may have come back (if 90 s downtime). So Retry #3 is likely to succeed.
+
+Net result: success at Retry #3 after ~1–2 connection attempts and backoff delays.
+
+Example C — DB down for 300 seconds (5 minutes)
+
+Using the delays, DB still down through many retries: Ret #1 (5s), #2 (15s), #3 (45s) likely fail; #4 scheduled after 135s; #4 attempt may occur when DB still down depending on the exact 300s start. Because your maxInterval is 240s for the fifth retry, eventually one retry after a larger wait will occur while DB is back.
+
+Worst-case, you will reach Retry #5 and possibly succeed if DB is back. If DB is still down, final retry fails and request errors out.
+
+Net result: request may be pending for minutes (multiple retries and connection wait time) before giving up.
+
+What exceptions / logs you should expect to see
+
+While DB is down and Hikari waiting: com.zaxxer.hikari.pool.HikariPool$PoolInitializationException or SQLTransientConnectionException: Timeout after 15000ms waiting for a connection from pool (common message).
+
+If driver attempts to connect but DB killed mid-query: ORA-03113 end-of-file on communication channel, ORA-01033, or socket-level I/O exceptions.
+
+If a running SQL exceeds oracle.net.query_timeout: ORA-01013: user requested cancel of current operation (or driver-translated exception).
+
+Spring Retry logs: “Retrying method …, attempt #n after exception …” if you enable org.springframework.retry logging.
+
+Pool-size implications (maxPoolSize = 10)
+
+With 1 JMeter thread this is irrelevant — single requester uses at most 1 connection.
+
+Under concurrent load, maxPoolSize = 10 caps concurrent physical connections. If many threads all block to create new connections while DB is down, they will all compete and Hikari will allow up to 10 connection attempts concurrently; beyond that, other threads will wait in the pool and eventually hit connectionTimeout.
+
+If many concurrent threads are retrying, you can see thundering herd effects; exponential backoff helps avoid that.
+
+Practical recommendations (given your new settings)
+
+15 s connection timeout is reasonable — it lets the driver have the chance to establish a connection (since driver connect timeout is 15 s too). Keep it unless you want faster failover.
+
+Keep exponential backoff — your configured delays give DB plenty of time to come back; this is good for a Chaos test.
+
+Tune validationTimeout (Hikari) to be shorter than connectionTimeout. Example: validationTimeout = 3000 ms. This helps Hikari validate idle connections quickly without waiting full driver connect.
+
+Enable connection test/validation so Hikari can detect and evict dead connections quickly once DB is back.
+
+Log retry attempts and connection-timeouts with sufficient detail ( include timestamps ) so you can correlate JMeter requests → retry timestamps → Gremlin restart timeline.
+
+Consider circuit-breaker (resilience4j) in front of retries to short-circuit repeated failures under heavy load, combined with exponential backoff.
+
+Ensure idempotency for the retried operation (unique keys, upserts, guard flags) because each retry is a fresh transaction.
+
+Monitor pool metrics (active connections, total connections, threads waiting) to see if pool is saturating under load.
+
+Short checklist for your chaos test with current settings
+
+hikari.connectionTimeout = 15000 ✅ (allows driver a fair window)
+
+oracle.net.CONNECT_TIMEOUT = 15000 ✅ (matches Hikari)
+
+oracle.net.query_timeout = 15 ✅ (statement-level cancellation)
+
+backoff sequence = 5s,15s,45s,135s,240s ✅ (total backoff 440s)
+
+maxPoolSize = 10 — fine for 1 thread; watch under concurrent load.
