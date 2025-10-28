@@ -1,3 +1,11 @@
+spring:
+  artemis:
+    mode: embedded           # Use embedded (in-memory) Artemis broker
+    embedded:
+      enabled: true           # Enable embedded broker
+      persistent: false       # Disable persistence (messages not stored on disk)
+      queues:                 # Define queues to auto-create
+        - demo-queue
 spring.artemis.mode=native
 spring.artemis.broker-url=tcp://localhost:61616
 spring.artemis.user=guest
