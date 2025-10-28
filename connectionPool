@@ -1,3 +1,36 @@
+spring.artemis.mode=native
+spring.artemis.broker-url=tcp://localhost:61616
+spring.artemis.user=guest
+spring.artemis.password=guest
+@Component
+public class EmbeddedBrokerWithTcp {
+
+    private final EmbeddedActiveMQ embedded = new EmbeddedActiveMQ();
+
+    @PostConstruct
+    public void start() throws Exception {
+        Configuration config = new ConfigurationImpl()
+                .setPersistenceEnabled(false)
+                .setSecurityEnabled(false)
+                .addAcceptorConfiguration(
+                        new TransportConfiguration(
+                                NettyAcceptorFactory.class.getName(),
+                                Collections.singletonMap("port", "61616")
+                        )
+                );
+
+        embedded.setConfiguration(config);
+        embedded.start();
+
+        System.out.println("✅ Embedded Artemis broker started on tcp://localhost:61616");
+    }
+
+    @PreDestroy
+    public void stop() throws Exception {
+        embedded.stop();
+        System.out.println("🛑 Embedded Artemis broker stopped");
+    }
+}
 Quick summary up front
 
 hikari.connectionTimeout = 15000 ms means each attempt to DataSource.getConnection() will wait up to 15 seconds for a valid connection before throwing a PoolTimeoutException (or SQLTransientConnectionException).
