@@ -1,3 +1,131 @@
+############################################
+deployment.yaml#################
+###################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application_name }}
+  namespace: {{ .Values.app_namespace }}
+  labels:
+    app: {{ .Values.application_name }}
+    environment: {{ .Values.deploy_environment }}
+    sysid: {{ .Values.sysid }}
+    version: {{ .Values.app_version }}
+
+spec:
+  replicas: {{ .Values.num_of_replicas }}
+  revisionHistoryLimit: 10
+
+  selector:
+    matchLabels:
+      app: {{ .Values.application_name }}
+
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application_name }}
+        deploymentConfig: {{ .Values.deployment_name }}
+        environment: {{ .Values.deploy_environment }}
+        sysid: {{ .Values.sysid }}
+
+    spec:
+      imagePullSecrets:
+        - name: nexuspullimage7906
+
+      serviceAccountName: {{ .Values.service_account }}
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+
+      containers:
+        - name: {{ .Values.application_name }}
+          image: {{ .Values.config.image }}
+          imagePullPolicy: Always
+
+          env:
+            - name: JAVA_OPTS
+              value: {{ .Values.java_opts | quote }}
+
+          envFrom:
+            - configMapRef:
+                name: {{ .Values.vault_config_name }}
+
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+            - containerPort: 8443
+              protocol: TCP
+
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - /opt/readyProbe.sh
+            timeoutSeconds: 10
+            periodSeconds: 60
+            successThreshold: 1
+            failureThreshold: 3
+
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - /opt/readyProbe.sh
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - /opt/readyProbe.sh
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+
+          resources:
+            limits:
+              cpu: {{ .Values.cpu_limit }}
+              memory: {{ .Values.memory_limit }}
+            requests:
+              cpu: {{ .Values.cpu_request }}
+              memory: {{ .Values.memory_request }}
+
+          volumeMounts:
+            - name: vault-secrets-path
+              mountPath: /var/run/secrets/vaultproject.io
+              readOnly: true
+
+            - name: volume-mount
+              mountPath: {{ .Values.application_config_mount }}
+
+            - name: ssl-volume
+              mountPath: /tmp
+              readOnly: true
+
+      volumes:
+        - name: vault-secrets-path
+          emptyDir: {}
+
+        - name: volume-mount
+          configMap:
+            name: {{ .Values.vault_config_name }}
+            defaultMode: 420
+
+        - name: ssl-volume
+          secret:
+            secretName: tomcat-ssl-secret
+            items:
+              - key: tls.crt
+                path: tomcat-ssl.crt
+              - key: tls.key
+                path: tomcat-ssl.key
+########################################################################################
 @Configuration
 public class Resilience4jMicrometerConfig {
 
