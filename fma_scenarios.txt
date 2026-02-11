@@ -1,0 +1,457 @@
+1.REST API / Application Layer Failures
+  REST Service Down / JVM Crash
+  High API Latency / Performance Degradation
+  Transaction Failure While Saving Data
+  
+2. Oracle / Aurora PostgreSQL Database Failures
+  
+	Database Not Available
+	DB Connection Pool Exhausted
+	Tablespace / Disk Full
+	Invalid DB Credentials
+	Aurora Failover Delay (Future Case)
+
+3.OCP / Container Platform Failures
+  Pod Crash / Restart Loop
+  Node Failure
+  Resource Quota Exceeded
+  
+4. Network Failures
+
+  1.Network Latency Between App and DB
+  2.DNS Resolution Failure
+
+5. A3P Platform Integration Failures
+  1.A3P Authentication Failure
+  2. A3P Service Unavailable
+  3. Certificate Expiry
+ 
+6. Data Integrity & Business Failures
+   1. Duplicate Data Saved
+   2. Partial Transaction Processing
+  
+7. Security Failures
+    1.Unauthorized API Access
+	2. Secret Store Unavailable
+
+8. Deployment & Release Failures
+   Bad Deployment
+
+9. Logging & Monitoring Failures
+  Logging System Down
+  
+10. Future Migration (Oracle → Aurora) Special Cases
+
+################################################################
+################################################################
+1. FULL FMA EXCEL TEMPLATE
+
+Sheet 1 → Failure Mode Analysis (FMA)
+
+| Component | Failure Mode | Detectability | Impact | Response | Auto/Manual | Monitoring Tool | Severity | Notes |
+
+| Component | Failure Mode              | Detectability       | Impact              | Response              | Auto/Manual |
+| --------- | ------------------------- | ------------------- | ------------------- | --------------------- | ----------- |
+| REST API  | Application pod crash     | OCP pod monitoring  | API unavailable     | Pod auto restart      | Auto        |
+| REST API  | JVM OutOfMemory           | JVM metrics         | Service outage      | Heap tuning & scaling | Auto        |
+| REST API  | Thread pool exhaustion    | App monitoring      | Request timeout     | Increase thread pool  | Auto        |
+| REST API  | High latency              | Response monitoring | SLA breach          | Add caching / retry   | Auto        |
+| REST API  | Transaction failure       | App logs            | Data inconsistency  | Rollback & retry      | Auto        |
+| REST API  | Connection pool exhausted | Hikari alerts       | Request failure     | Tune pool size        | Auto        |
+| REST API  | Invalid configuration     | Startup logs        | Service unavailable | Config rollback       | Manual      |
+
+
+| Component     | Failure Mode         |
+| ------------- | -------------------- |
+| Oracle/Aurora | Database down        |
+| Oracle/Aurora | Failover delay       |
+| Oracle/Aurora | Tablespace full      |
+| Oracle/Aurora | Connection timeout   |
+| Oracle/Aurora | Credential failure   |
+| Oracle/Aurora | Deadlock             |
+| Oracle/Aurora | Log file full        |
+| Oracle/Aurora | Slow query execution |
+
+
+| Component   | Failure Mode            |
+| ----------- | ----------------------- |
+| OCP Pod     | CrashLoopBackOff        |
+| OCP Node    | Node unavailable        |
+| OCP Cluster | Resource quota exceeded |
+| VM          | CPU high                |
+| VM          | Memory high             |
+| VM          | Disk full               |
+| VM          | Disk I/O high           |
+
+
+NETWORK
+
+	Network latency app → DB
+
+	DNS failure
+
+	Firewall block
+
+	Load balancer failure
+
+	SSL handshake failure
+
+A3P PLATFORM
+
+	Authentication failure
+
+	Token expiry
+
+	Service unavailable
+
+	Certificate expiry
+
+	Authorization failure
+
+SECURITY / SECRET STORE
+
+Secret store unavailable
+
+Credential rotation failure
+
+Token generation failure
+
+
+DATA / BUSINESS FAILURES
+	Duplicate data
+	Partial transaction
+	Message replay issue
+	Data corruption
+	
+DEPLOYMENT / RELEASE
+	Bad deployment
+	Rollback failure
+	Configuration mismatch
+	CI/CD pipeline failure
+
+2. AURORA MIGRATION FAILURE CATALOG
+  Data Migration Issues
+		Schema mismatch
+		Data type incompatibility
+		Index differences
+		Constraint mismatch
+ Runtime Compatibility
+  Oracle specific queries fail
+  Stored procedure differences
+  Sequence handling issues
+ 
+ Performance Risks
+  Query plan differences
+  Connection handling differences
+  
+ Failover Risks
+  Failover delay
+  Reader/Writer endpoint confusion
+ 
+ Connectivity Risks
+  SSL configuration mismatch
+  Credential mismatch
+ 
+ Validation Checklist
+	Data row count validation
+    Query performance testing
+    Parallel DB run testing
+
+3. OCP FAILURE CHECKLIST
+	POD LEVEL
+		Pod crash
+		Memory leak
+		Liveness probe failure
+		Readiness probe failure
+	NODE LEVEL
+
+	Node shutdown
+	Network partition
+	Storage mount failure
+	
+	CLUSTER LEVEL
+
+Resource quota exceeded
+
+Image pull failure
+
+Namespace limits reached
+
+RETRY / CIRCUIT BREAKER STANDARD TEMPLATE
+
+Retry Standard
+| Property         | Recommended              |
+| ---------------- | ------------------------ |
+| Max Attempts     | 3–5                      |
+| Backoff Strategy | Exponential              |
+| Retry Only       | Network / timeout errors |
+
+Circuit Breaker Standard
+| Property            | Recommended                    |
+| ------------------- | ------------------------------ |
+| Failure Threshold   | 50%                            |
+| Open State Duration | 30–60 seconds                  |
+| Fallback Strategy   | Default response / queue retry |
+
+DR & HA MAPPING TEMPLATE (Disaster Recovery and High Availability)
+RTO Recovery Time Objective
+RPO Recovery Point Objective
+
+| Abbreviation | Full Form                    | Meaning                                                                                                                                                 |
+| ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RTO**      | **Recovery Time Objective**  | The maximum acceptable time to restore a system/service after a failure or disaster. Example: If RTO = 2 hours, system must be restored within 2 hours. |
+| **RPO**      | **Recovery Point Objective** | The maximum acceptable amount of data loss measured in time. Example: If RPO = 15 minutes, you can afford to lose only last 15 minutes of data.         |
+| **DR**       | **Disaster Recovery**        | The strategy and processes to recover IT systems, data, and infrastructure after disasters like hardware failure, cyber attack, or natural disasters.   |
+| **HA**       | **High Availability**        | System design approach that ensures services remain continuously operational with minimal downtime using redundancy, failover, clustering, etc.         |
+
+
+
+DR Mapping Table
+| Component    | HA Strategy          | DR Strategy          | RTO    | RPO         |
+| ------------ | -------------------- | -------------------- | ------ | ----------- |
+| REST Service | Multi pod deployment | Redeploy from image  | 15 min | 0 data loss |
+| Database     | Aurora cluster       | Cross region replica | 30 min | 5 min       |
+| OCP Cluster  | Multi node           | Secondary cluster    | 1 hour | Minimal     |
+| A3P          | Redundant endpoints  | Failover routing     | 30 min | Minimal     |
+
+RTO = 1 hour → Application must be restored within 1 hour after outage
+
+RPO = 5 minutes → Maximum 5 minutes of transaction data loss allowed
+
+DR → Backup data center or cloud recovery setup
+
+HA → Load balancers + multiple servers running simultaneously to avoid downtime
+
+
+Understand the Purpose of FMA
+FMA identifies:
+
+	Possible failure scenarios
+
+	How failures are detected
+
+	Impact on application/business
+
+	Recovery or mitigation strategy
+	
+Objective:
+
+	Improve resiliency
+
+	Reduce downtime
+
+	Define monitoring + alert strategy
+
+	Define auto-recovery and manual recovery actions
+
+Column   						Meaning
+
+Component / Interaction       System component or dependency
+
+Failure Mode				  What can fail
+
+Detectability				  How failure is identified
+
+Impact to Application         Business & technical impact
+
+Impact to Application	      Recovery / mitigation action
+
+Application Layer
+
+Database Layer
+
+OCP / Infrastructure
+
+Network
+
+Security
+
+A3P Platform
+
+Future Aurora migration scenarios
+
+
+. REST API / Application Layer Failures
+REST Service Down / JVM Crash
+
+Failure Mode
+
+Application pod crashes
+
+JVM OutOfMemory
+
+Deployment failure
+
+Detectability
+
+OCP Pod status monitoring
+
+Application logs
+
+Health check endpoint failure
+
+Impact
+
+API unavailable
+
+Client cannot save or fetch data
+
+SLA breach
+
+Response
+
+Auto restart pod
+
+Configure readiness & liveness probes
+
+Enable auto scaling
+
+
+High API Latency / Performance Degradation
+
+Failure Mode
+
+Thread pool exhaustion
+
+DB response slow
+
+Network latency
+
+Detectability
+
+Application monitoring tools
+
+Response time alerts
+
+Increase in retry count
+
+Impact
+
+Client timeouts
+
+Data ingestion delays
+
+Response
+
+Implement connection pool tuning
+
+Add caching
+
+Add circuit breaker + retry logic
+
+Transaction Failure While Saving Data
+Failure Mode
+
+DB timeout
+
+Lock contention
+
+Deadlock
+
+Detectability
+
+DB monitoring
+
+Application error logs
+
+Impact
+
+Partial data saved
+
+Data inconsistency
+
+Response
+
+Enable transaction rollback
+
+Add retry with exponential backoff
+
+Memory / CPU High in Application Pod
+Detectability
+
+OCP Monitoring
+
+JVM metrics
+
+Impact
+
+Slow response
+
+Pod crash
+
+Response
+
+Increase pod resources
+
+Enable autoscaling
+
+Heap tuning
+
+2. Oracle / Aurora PostgreSQL Database Failures
+
+Database Not Available 
+
+   Failure Mode
+
+	Oracle instance down
+
+	Aurora cluster unavailable
+
+	Detectability
+
+	DB health check
+
+	Connection pool failures
+	
+	Impact
+
+	Data cannot be saved or retrieved
+
+	API failure
+
+	Response
+
+	Retry DB connection
+
+	Enable failover handling
+
+	Alert DBA team	
+	
+DB Connection Pool Exhausted
+
+Detectability
+
+HikariCP alerts
+
+Application logs
+
+Impact
+
+Request rejection
+
+API latency
+
+Response
+
+Increase pool size
+
+Fix connection leaks
+
+Tune DB session limits
+
+Tablespace / Disk Full
+Detectability
+
+DB monitoring alerts
+
+Impact
+
+Insert/update fails
+
+Data loss risk
+
+Response
+
+Archive logs
+
+Increase storage
