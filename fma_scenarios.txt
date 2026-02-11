@@ -455,3 +455,98 @@ Response
 Archive logs
 
 Increase storage
+
+Component Layer	Component	Failure Mode	Detectability	Impact	Response/Mitigation	Auto/Manual	Monitoring Tool	Severity
+Application	Spring Boot REST Service	Pod crash	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	JVM OutOfMemory	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Thread pool exhaustion	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Connection pool exhaustion	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Unhandled exception	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	High response time	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Memory leak	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	CPU spike	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Deployment failure	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Config mismatch	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Health check failure	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Dependency timeout	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Transaction rollback failure	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Deadlock	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Serialization error	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Large payload failure	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	API rate limit exceeded	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Improper input validation	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Session timeout issue	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Application	Spring Boot REST Service	Logging failure	App logs/APM alerts	API disruption or SLA breach	Retry, autoscale, fix config, tuning	Auto	APM/OCP Monitoring	High
+Database	Oracle DB	DB instance down	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Listener failure	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Tablespace full	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Redo log full	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Connection timeout	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Invalid credentials	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Deadlock detected	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Slow query	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Index corruption	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Backup failure	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Archive log full	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	High CPU	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	High I/O	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Lock contention	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Oracle DB	Network interruption	DB monitoring alerts	Read/Write failure	Failover, retry, DBA intervention	Auto/Manual	Oracle Monitoring	Critical
+Database	Aurora PostgreSQL	Cluster failover delay	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Writer endpoint switch	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Replica lag	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Connection drop	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Parameter group mismatch	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	SSL config error	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Credential rotation failure	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Query plan regression	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Sequence mismatch	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Extension incompatibility	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Storage autoscaling delay	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Network ACL issue	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	DNS resolution issue	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	IAM auth failure	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Database	Aurora PostgreSQL	Backup restore failure	CloudWatch/DB alerts	Transaction interruption	Retry logic + cluster endpoint usage	Auto	AWS Monitoring	Critical
+Platform	OCP Cluster	Pod CrashLoopBackOff	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Node failure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Resource quota exceeded	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	PVC mount failure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Image pull failure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Namespace limit exceeded	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	CPU throttling	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Memory pressure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Disk full	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Network partition	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Ingress failure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Service mesh issue	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	ConfigMap missing	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Secret not mounted	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Platform	OCP Cluster	Autoscaler failure	OCP monitoring	Service degradation	Restart/redeploy/scale	Auto	OCP Monitoring	High
+Network	App ↔ DB/A3P	High latency	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	Packet loss	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	Firewall block	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	DNS outage	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	Load balancer failure	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	SSL handshake failure	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	Certificate expired	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Network	App ↔ DB/A3P	Proxy failure	Network monitoring	Timeouts & SLA impact	Retry + fix infra issue	Auto	Network Monitoring	High
+Integration	A3P Platform	Authentication failure	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Authorization failure	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Token expiry	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	A3P API timeout	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Schema mismatch	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Downstream service failure	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Rate limiting	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Integration	A3P Platform	Payload validation failure	App logs/APM	Request rejection	Retry + circuit breaker	Auto	APM	High
+Security	Secrets/Auth	Secret store unavailable	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+Security	Secrets/Auth	Credential expired	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+Security	Secrets/Auth	TLS version mismatch	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+Security	Secrets/Auth	Unauthorized access attempt	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+Security	Secrets/Auth	Audit logging failure	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+Security	Secrets/Auth	Key rotation delay	Security monitoring	Access failure or risk	Retry + manual rotation	Auto/Manual	SIEM	High
+DevOps	CI/CD Pipeline	Pipeline failure	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
+DevOps	CI/CD Pipeline	Rollback failure	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
+DevOps	CI/CD Pipeline	Wrong artifact deployed	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
+DevOps	CI/CD Pipeline	Environment variable missing	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
+DevOps	CI/CD Pipeline	Blue-green switch failure	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
+DevOps	CI/CD Pipeline	Helm chart error	Pipeline logs	Deployment outage	Rollback + fix config	Manual	CI/CD Tool	Medium
