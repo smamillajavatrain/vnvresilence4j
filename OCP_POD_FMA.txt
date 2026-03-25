@@ -1,3 +1,56 @@
+FMA Observability Report
+
+1.	Scenario Name
+
+Kill Main Process (Pod Crash Simulation)
+
+2.	Objective
+
+To validate system resilience when a pod crashes and verify auto-recovery, traffic failover, and observability signals.
+
+3.	Test Setup
+
+Application: Data API Environment: A3P (Kubernetes) Load Tool: JMeter
+Threads: 10
+Throughput: ~1.6 req/sec Load Type: Continuous
+
+4.	Failure Injection
+
+kubectl exec -- /bin/bash -c "kill 1"
+
+5.	Observability Signals
+
+Metrics: Pod restart count increased, temporary drop in throughput. Logs: Application shutdown logs, restart initialization logs observed. Alerts: Pod restart alert expected (if configured).
+6.	Timeline
+
+Event	Time
+Load Started	14:42:36
+Pod Killed	14:42:37
+Errors Observed	14:42:37 - 14:42:40
+Pod Restarted	~4 seconds
+ 
+System Recovered	14:42:41
+
+
+7.	Impact Analysis
+
+Temporary request failures observed during pod restart. No full system outage occurred.
+
+8.	Recovery Behavior
+
+Kubernetes automatically restarted the pod. Service resumed within ~4 seconds without manual intervention.
+
+9.	Observations
+
+-	Traffic successfully redirected to another running pod
+-	Minimal disruption observed
+-	System handled failure gracefully
+
+10.	Conclusion
+
+System is resilient to single pod failure. Auto-healing works as expected with a recovery time of ~4 seconds. Minor transient errors observed.
+
+
 Pod / Container Failure Simulation Commands (FMA)
 | Scenario                      | Purpose                      | Command                                              |
 | ----------------------------- | ---------------------------- | ---------------------------------------------------- |
