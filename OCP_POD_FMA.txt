@@ -1,0 +1,246 @@
+Pod / Container Failure Simulation Commands (FMA)
+| Scenario                      | Purpose                      | Command                                              |
+| ----------------------------- | ---------------------------- | ---------------------------------------------------- |
+| **Kill main process (PID 1)** | Simulate container crash     | `oc exec <pod-name> -- kill 1`                       |
+| **Force kill main process**   | Immediate container crash    | `oc exec <pod-name> -- kill -9 1`                    |
+| **Kill specific process**     | Crash internal service       | `oc exec <pod-name> -- kill -9 <PID>`                |
+| **Delete pod**                | Simulate sudden pod failure  | `oc delete pod <pod-name>`                           |
+| **Force delete pod**          | Immediate pod removal        | `oc delete pod <pod-name> --force --grace-period=0`  |
+| **Restart deployment pods**   | Simulate application restart | `oc rollout restart deployment <deployment-name>`    |
+| **Scale pods down**           | Simulate capacity loss       | `oc scale deployment <deployment-name> --replicas=0` |
+| **Scale pods up**             | Recovery testing             | `oc scale deployment <deployment-name> --replicas=3` |
+| **Pause deployment rollout**  | Test deployment freeze       | `oc rollout pause deployment <deployment-name>`      |
+| **Resume rollout**            | Resume deployment            | `oc rollout resume deployment <deployment-name>`     |
+
+
+Resource Exhaustion Testing
+| Scenario               | Purpose                 | Command                                                        |
+| ---------------------- | ----------------------- | -------------------------------------------------------------- |
+| **CPU stress**         | Simulate CPU exhaustion | `oc exec <pod-name> -- yes > /dev/null`                        |
+| **Memory consumption** | Simulate memory leak    | `oc exec <pod-name> -- dd if=/dev/zero of=/dev/shm/test bs=1M` |
+| **Fill disk**          | Disk full scenario      | `oc exec <pod-name> -- dd if=/dev/zero of=/tmp/bigfile bs=1M`  |
+| **Check disk usage**   | Monitor disk            | `oc exec <pod-name> -- df -h`                                  |
+
+Network Failure Simulation
+| Scenario                   | Purpose                     | Command                                            |
+| -------------------------- | --------------------------- | -------------------------------------------------- |
+| **Block outgoing traffic** | Simulate network issue      | `oc exec <pod-name> -- iptables -A OUTPUT -j DROP` |
+| **Test connectivity**      | Verify service reachability | `oc exec <pod-name> -- curl http://service-name`   |
+| **DNS resolution test**    | Check DNS failure           | `oc exec <pod-name> -- nslookup service-name`      |
+
+Node-Level Failure Testing
+| Scenario             | Purpose                   | Command                                        |
+| -------------------- | ------------------------- | ---------------------------------------------- |
+| **Find node of pod** | Identify hosting node     | `oc get pod <pod-name> -o wide`                |
+| **Drain node**       | Simulate node maintenance | `oc adm drain <node-name> --ignore-daemonsets` |
+| **Cordoning node**   | Prevent scheduling        | `oc adm cordon <node-name>`                    |
+| **Uncordon node**    | Allow scheduling          | `oc adm uncordon <node-name>`                  |
+
+Pod Debugging Commands
+| Scenario            | Purpose              | Command                               |
+| ------------------- | -------------------- | ------------------------------------- |
+| **Enter pod shell** | Troubleshooting      | `oc exec -it <pod-name> -- /bin/bash` |
+| **Remote shell**    | Alternative to exec  | `oc rsh <pod-name>`                   |
+| **Check pod logs**  | Application logs     | `oc logs <pod-name>`                  |
+| **Follow logs**     | Real-time monitoring | `oc logs -f <pod-name>`               |
+| **Describe pod**    | Full pod diagnostics | `oc describe pod <pod-name>`          |
+
+CrashLoopBackOff Testing
+| Scenario                       | Purpose                   | Command                                               |
+| ------------------------------ | ------------------------- | ----------------------------------------------------- |
+| **Crash container repeatedly** | Simulate CrashLoopBackOff | `oc exec <pod-name> -- kill -9 1` repeatedly          |
+| **Check restart count**        | Verify restart policy     | `oc get pod <pod-name>`                               |
+| **Check events**               | Diagnose failures         | `oc get events --sort-by=.metadata.creationTimestamp` |
+
+Deployment Validation
+| Scenario                    | Purpose              | Command                                          |
+| --------------------------- | -------------------- | ------------------------------------------------ |
+| **Check pod health**        | Verify pod status    | `oc get pods`                                    |
+| **Check deployment status** | Validate rollout     | `oc rollout status deployment/<deployment-name>` |
+| **View replica set**        | Deployment internals | `oc get rs`                                      |
+
+Example FMA Test Flow (Typical SRE validation)
+1️Identify pod
+
+oc get pods
+
+2️ Kill container process
+
+oc exec <pod-name> -- kill -9 1
+
+3️ Verify restart
+
+oc get pods -w
+
+4️ Check logs
+
+oc logs <pod-name>
+
+5️ Validate service recovery.
+
+Advanced FMA Scenarios for Pod / Cluster Resilience
+| #  | Failure Scenario                | Purpose                            | Command                                                        |
+| -- | ------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
+| 1  | **Kill main container process** | Validate container auto-restart    | `oc exec <pod-name> -- kill -9 1`                              |
+| 2  | **Delete pod**                  | Check controller recreates pod     | `oc delete pod <pod-name>`                                     |
+| 3  | **Force delete pod**            | Simulate abrupt crash              | `oc delete pod <pod-name> --force --grace-period=0`            |
+| 4  | **CrashLoopBackOff simulation** | Verify restart policy              | `oc exec <pod-name> -- kill -9 1` repeatedly                   |
+| 5  | **Liveness probe failure**      | Test health-check recovery         | Stop application process inside pod                            |
+| 6  | **Readiness probe failure**     | Validate traffic removal           | Block application port                                         |
+| 7  | **CPU exhaustion**              | Validate auto scaling / throttling | `oc exec <pod-name> -- yes > /dev/null`                        |
+| 8  | **Memory exhaustion**           | Test OOM kill handling             | `oc exec <pod-name> -- dd if=/dev/zero of=/dev/shm/test bs=1M` |
+| 9  | **Disk full scenario**          | Validate storage alerts            | `oc exec <pod-name> -- dd if=/dev/zero of=/tmp/bigfile bs=1M`  |
+| 10 | **Network block**               | Simulate connectivity failure      | `oc exec <pod-name> -- iptables -A OUTPUT -j DROP`             |
+| 11 | **DNS failure**                 | Validate service discovery         | Remove `/etc/resolv.conf` temporarily                          |
+| 12 | **Service dependency failure**  | Downstream API unavailable         | Stop dependent service                                         |
+| 13 | **Pod eviction**                | Node resource pressure simulation  | Fill node memory                                               |
+| 14 | **Node drain**                  | Validate pod rescheduling          | `oc adm drain <node-name> --ignore-daemonsets`                 |
+| 15 | **Node cordon**                 | Prevent scheduling on node         | `oc adm cordon <node-name>`                                    |
+| 16 | **Node uncordon**               | Restore scheduling                 | `oc adm uncordon <node-name>`                                  |
+| 17 | **Scale deployment to zero**    | Validate recovery after downtime   | `oc scale deployment <deployment-name> --replicas=0`           |
+| 18 | **Scale deployment up**         | Verify pod startup behavior        | `oc scale deployment <deployment-name> --replicas=3`           |
+| 19 | **Image pull failure**          | Simulate registry outage           | Change image tag to invalid                                    |
+| 20 | **ConfigMap change**            | Validate config reload             | `oc edit configmap <name>`                                     |
+| 21 | **Secret rotation test**        | Verify secret reload               | `oc edit secret <name>`                                        |
+| 22 | **Pod network latency**         | Test timeout resilience            | Apply network delay using tc                                   |
+| 23 | **Pod network packet loss**     | Test retry mechanisms              | Inject packet loss                                             |
+| 24 | **Container runtime crash**     | Validate kubelet recovery          | Restart container runtime on node                              |
+| 25 | **Cluster API failure**         | Validate control plane resilience  | Stop API server (test env only)                                |
+
+Useful Monitoring Commands During FMA
+| Purpose              | Command                      |
+| -------------------- | ---------------------------- |
+| Watch pod restart    | `oc get pods -w`             |
+| Check restart count  | `oc get pod <pod-name>`      |
+| View pod events      | `oc describe pod <pod-name>` |
+| View logs            | `oc logs <pod-name>`         |
+| Follow logs          | `oc logs -f <pod-name>`      |
+| Check node resources | `oc adm top nodes`           |
+| Check pod resources  | `oc adm top pods`            |
+
+Example Real FMA Test Flow
+Step 1 – Identify pod
+oc get pods
+Step 2 – Crash application
+oc exec <pod-name> -- kill -9 1
+Step 3 – Watch restart
+oc get pods -w
+
+Expected result:
+
+Pod restarts automatically
+
+Restart count increases
+
+Service becomes available again
+
+Key Observations During FMA
+You should validate:
+
+Pod restart time
+
+Service availability
+
+Error handling in logs
+
+Auto scaling behavior
+
+Alert triggering
+
+Recovery time objective (RTO)
+
+SRE Production Validation Metrics
+| Metric                      | Expected Result |
+| --------------------------- | --------------- |
+| Pod restart time            | < 30 seconds    |
+| Service recovery            | < 60 seconds    |
+| No data loss                | ✔               |
+| Automatic failover          | ✔               |
+| Monitoring alerts triggered | ✔               |
+
+OpenShift SRE Troubleshooting Toolkit (Top Commands)
+| #  | Purpose                            | Command                                               |
+| -- | ---------------------------------- | ----------------------------------------------------- |
+| 1  | List all pods                      | `oc get pods`                                         |
+| 2  | Watch pod status in real time      | `oc get pods -w`                                      |
+| 3  | Show detailed pod information      | `oc describe pod <pod-name>`                          |
+| 4  | Check pod logs                     | `oc logs <pod-name>`                                  |
+| 5  | Follow logs in real time           | `oc logs -f <pod-name>`                               |
+| 6  | Logs of previous crashed container | `oc logs <pod-name> --previous`                       |
+| 7  | Execute command inside pod         | `oc exec -it <pod-name> -- /bin/bash`                 |
+| 8  | Remote shell into pod              | `oc rsh <pod-name>`                                   |
+| 9  | Check pod restart count            | `oc get pod <pod-name>`                               |
+| 10 | List deployments                   | `oc get deployment`                                   |
+| 11 | Check rollout status               | `oc rollout status deployment/<deployment-name>`      |
+| 12 | Restart deployment                 | `oc rollout restart deployment <deployment-name>`     |
+| 13 | List replica sets                  | `oc get rs`                                           |
+| 14 | Check events (sorted by time)      | `oc get events --sort-by=.metadata.creationTimestamp` |
+| 15 | Check cluster nodes                | `oc get nodes`                                        |
+| 16 | Check node resource usage          | `oc adm top nodes`                                    |
+| 17 | Check pod resource usage           | `oc adm top pods`                                     |
+| 18 | Identify node hosting pod          | `oc get pod <pod-name> -o wide`                       |
+| 19 | Debug pod                          | `oc debug pod/<pod-name>`                             |
+| 20 | Debug node                         | `oc debug node/<node-name>`                           |
+
+Advanced Troubleshooting Commands
+| Purpose                    | Command            |
+| -------------------------- | ------------------ |
+| View all cluster resources | `oc get all`       |
+| Check service endpoints    | `oc get endpoints` |
+| Verify service             | `oc get svc`       |
+| Check configmaps           | `oc get configmap` |
+| Check secrets              | `oc get secrets`   |
+| Inspect namespace          | `oc project`       |
+| Check persistent volumes   | `oc get pvc`       |
+| Check routes               | `oc get routes`    |
+
+Pod Crash Investigation Workflow (Typical SRE Flow)
+Identify failing pod
+oc get pods
+
+Example output
+
+payment-service-abc123   CrashLoopBackOff
+2️ Check pod details
+oc describe pod payment-service-abc123
+
+Look for:
+
+Restart count
+
+Last termination reason
+
+Events section
+
+3️ Check logs
+oc logs payment-service-abc123
+
+If container restarted:
+
+oc logs payment-service-abc123 --previous
+4️ Check node hosting the pod
+oc get pod payment-service-abc123 -o wide
+5️ Check node health
+oc adm top nodes
+6️ Debug the pod
+oc debug pod/payment-service-abc123
+Very Useful Crash Debug Command
+
+If container crashes too fast:
+
+oc logs <pod-name> --previous
+
+This shows logs of the last crashed container.
+
+One Powerful Command SREs Always Use
+oc get pods -o wide
+
+This shows:
+
+Pod status
+
+Node where pod is running
+
+Pod IP
+
+Restart count

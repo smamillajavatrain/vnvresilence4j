@@ -1,0 +1,515 @@
+@Configuration
+public class Resilience4jMicrometerConfig {
+
+    @Bean
+    public RetryRegistry retryRegistry(MeterRegistry meterRegistry) {
+        RetryRegistry registry = RetryRegistry.ofDefaults();
+
+        // register for already created retries and for any added later
+        registry.getAllRetries().forEach(r -> attachListener(r, meterRegistry));
+        registry.getEventPublisher()
+                .onEntryAdded(event -> attachListener(event.getAddedEntry(), meterRegistry));
+
+        return registry;
+    }
+
+    private void attachListener(Retry retry, MeterRegistry meterRegistry) {
+        retry.getEventPublisher().onEvent(event -> {
+            // create a stable label for the kind - you can map event types to your preferred names
+            String kind = mapEventTypeToKind(event.getEventType().name());
+            meterRegistry.counter(
+                    "resilience4j_retry_calls_total", 
+                    "application", "CFMTestAPI",           // optional static tag
+                    "instance", getInstanceName(),         // optional if you want it
+                    "name", retry.getName(),
+                    "kind", kind
+            ).increment();
+        });
+    }
+
+    private String mapEventTypeToKind(String eventTypeName) {
+        // simple mapping - adjust as you like
+        if (eventTypeName.toLowerCase().contains("retry")) return "failed_with_retry";
+        if (eventTypeName.toLowerCase().contains("success")) return "successful_with_retry";
+        if (eventTypeName.toLowerCase().contains("error")) return "failed_with_retry";
+        return eventTypeName.toLowerCase();
+    }
+
+    private String getInstanceName() {
+        // return instance identifier if you want it as a tag, e.g. hostname:port
+        return System.getenv().getOrDefault("HOSTNAME", "unknown-instance");
+    }
+}
+
+sum by (name) (rate(resilience4j_retry_calls_total[5m]))
+sum by (kind) (increase(resilience4j_retry_calls_total[5m]))
+increase(resilience4j_retry_calls_total{kind="successful_with_retry", name=~"$retry_name"}[5m])
+increase(resilience4j_retry_calls_total{kind="failed_with_retry", name=~"$retry_name"}[5m])
+label_values(resilience4j_retry_calls_total, name)
+increase(resilience4j_retry_calls_total[5m])
+label_values(resilience4j_retry_calls_total, name)
+
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Minimal dashboard for Resilience4j retry metrics (3 panels)",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {},
+      "targets": [
+        {
+          "expr": "sum by (name, kind) (rate(resilience4j_retry_calls_total[5m]))",
+          "legendFormat": "{{name}} - {{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Retries per second (5m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "expr": "sum by (kind) (increase(resilience4j_retry_calls_total{name=~\"$retry_name\"}[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Retry counts by kind (increase last 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {},
+      "targets": [
+        {
+          "expr": "increase(resilience4j_retry_calls_total{kind=\"failed_with_retry\", name=~\"$retry_name\"}[5m])",
+          "legendFormat": "failed_with_retry - {{name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(resilience4j_retry_calls_total{kind=\"successful_with_retry\", name=~\"$retry_name\"}[5m])",
+          "legendFormat": "successful_with_retry - {{name}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Failed / Successful with retry (last 5m)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["resilience4j", "retry"],
+  "templating": {
+    "list": [
+      {
+        "name": "retry_name",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(resilience4j_retry_calls_total, name)",
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "sort": 0
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "title": "Resilience4j Retry Dashboard (minimal)",
+  "uid": null,
+  "version": 1
+}
+
+
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import java.util.Optional;
+
+public class MetricsUtils {
+
+    private final MeterRegistry meterRegistry;
+    private final String applicationName;
+    private final String instanceId;
+    private final String jobName;
+
+    public MetricsUtils(MeterRegistry meterRegistry, String applicationName, String instanceId, String jobName) {
+        this.meterRegistry = meterRegistry;
+        this.applicationName = applicationName;
+        this.instanceId = instanceId;
+        this.jobName = jobName;
+    }
+
+    /**
+     * Increment a counter in Prometheus / Micrometer similar to resilience4j_retry_calls_total.
+     *
+     * @param counterName metric name to use (e.g. "resilience4j_retry_calls_total")
+     * @param throwable   the throwable to inspect (may be null)
+     * @param retryName   the logical retry name (e.g. "dbRetry" or service name)
+     * @param kind        the kind (failed_with_retry, successful_with_retry, successful_without_retry, etc.)
+     */
+    public void incrementCounter(String counterName, Throwable throwable, String retryName, String kind) {
+        String exception = "NONE";
+        String className = "NOT-DETECTED";
+        String methodName = "NOT-DETECTED";
+
+        if (throwable != null) {
+            exception = throwable.getClass().getSimpleName();
+
+            StackTraceElement[] stackTrace = throwable.getStackTrace();
+            if (stackTrace != null && stackTrace.length > 0) {
+                StackTraceElement e0 = stackTrace[0];
+                if (e0 != null) {
+                    className = Optional.ofNullable(e0.getClassName()).orElse(className);
+                    methodName = Optional.ofNullable(e0.getMethodName()).orElse(methodName);
+                }
+            }
+        }
+
+        // Build tags: include both resilience4j-style labels and your custom ones
+        Tags tags = Tags.of(
+            "application", applicationName,
+            "instance", instanceId,
+            "job", jobName,
+            "name", Optional.ofNullable(retryName).orElse("unknown-retry"),
+            "kind", Optional.ofNullable(kind).orElse("unknown-kind"),
+            "exception", exception,
+            "className", className,
+            "methodName", methodName
+        );
+
+        // Increment the counter
+        meterRegistry.counter(counterName, tags).increment();
+    }
+}
+
+
+// in a @Configuration class
+@Bean
+public MetricsUtils metricsUtils(MeterRegistry meterRegistry) {
+    String app = "CFMTestAPI";
+    String instance = System.getenv().getOrDefault("HOSTNAME", "unknown");
+    String job = "res-legacy-api";
+    return new MetricsUtils(meterRegistry, app, instance, job);
+}
+
+// elsewhere, when the retry event happens:
+metricsUtils.incrementCounter("resilience4j_retry_calls_total", throwable, "dbRetry", "failed_with_retry");
+
+
+
+package com.dtcc.cfm.metrics;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+
+import java.util.Optional;
+
+public class CustomRetryMetrics {
+
+    private final MeterRegistry meterRegistry;
+    private final String applicationName;
+    private final String instanceId;
+    private final String jobName;
+    private final String metricName; // custom metric name
+
+    public CustomRetryMetrics(MeterRegistry meterRegistry,
+                              String applicationName,
+                              String instanceId,
+                              String jobName) {
+        this.meterRegistry = meterRegistry;
+        this.applicationName = applicationName;
+        this.instanceId = instanceId;
+        this.jobName = jobName;
+        this.metricName = "cfm_retry_calls_total"; // change if you prefer another name
+    }
+
+    /**
+     * Increment a custom retry counter with tags similar to resilience4j layout.
+     *
+     * @param throwable optional Throwable for exception/class/method tags
+     * @param retryName logical retry name (e.g. "dbRetry")
+     * @param kind      kind like "failed_with_retry", "successful_with_retry", "successful_without_retry"
+     */
+    public void incrementCustomRetryCounter(Throwable throwable, String retryName, String kind) {
+        String exception = "NONE";
+        String className = "NOT-DETECTED";
+        String methodName = "NOT-DETECTED";
+
+        if (throwable != null) {
+            exception = throwable.getClass().getSimpleName();
+            StackTraceElement[] stackTrace = throwable.getStackTrace();
+            if (stackTrace != null && stackTrace.length > 0 && stackTrace[0] != null) {
+                StackTraceElement e0 = stackTrace[0];
+                className = Optional.ofNullable(e0.getClassName()).orElse(className);
+                methodName = Optional.ofNullable(e0.getMethodName()).orElse(methodName);
+            }
+        }
+
+        Tags tags = Tags.of(
+            "application", applicationName,
+            "instance", instanceId,
+            "job", jobName,
+            "name", Optional.ofNullable(retryName).orElse("unknown-retry"),
+            "kind", Optional.ofNullable(kind).orElse("unknown-kind"),
+            "exception", exception,
+            "className", className,
+            "methodName", methodName
+        );
+
+        // increment the custom metric
+        meterRegistry.counter(metricName, tags).increment();
+    }
+}
+
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import io.micrometer.core.instrument.MeterRegistry;
+
+@Configuration
+public class MetricsConfig {
+
+    @Bean
+    public CustomRetryMetrics customRetryMetrics(MeterRegistry meterRegistry) {
+        String app = "CFMTestAPI";
+        String instance = System.getenv().getOrDefault("HOSTNAME", "unknown-instance");
+        String job = "res-legacy-api";
+        return new CustomRetryMetrics(meterRegistry, app, instance, job);
+    }
+}
+
+// inject CustomRetryMetrics
+customRetryMetrics.incrementCustomRetryCounter(throwable, "dbRetry", "failed_with_retry");
+
+
+{
+  "annotations": { "list": [] },
+  "description": "Minimal dashboard for custom retry metric cfm_retry_calls_total",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum by (name, kind) (rate(cfm_retry_calls_total[5m]))",
+          "legendFormat": "{{name}} - {{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Retries per second (5m rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "sum by (kind) (increase(cfm_retry_calls_total{name=~\"$retry_name\"}[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Retry counts by kind (increase last 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "increase(cfm_retry_calls_total{kind=\"failed_with_retry\", name=~\"$retry_name\"}[5m])",
+          "legendFormat": "failed_with_retry - {{name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(cfm_retry_calls_total{kind=\"successful_with_retry\", name=~\"$retry_name\"}[5m])",
+          "legendFormat": "successful_with_retry - {{name}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Failed / Successful with retry (last 5m)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["custom", "retry"],
+  "templating": {
+    "list": [
+      {
+        "name": "retry_name",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(cfm_retry_calls_total, name)",
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "sort": 0
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "CFM Custom Retry Dashboard (minimal)",
+  "uid": null,
+  "version": 1
+}
+
+label_values(cfm_retry_calls_total, name)
+increase(cfm_retry_calls_total[5m])
+sum by (name, kind) (rate(cfm_retry_calls_total[5m]))
+
+package com.dtcc.cfm.metrics;
+
+import javax.annotation.PostConstruct;
+
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
+import io.github.resilience4j.retry.event.RetryOnRetryEvent;
+import io.github.resilience4j.retry.event.RetryOnSuccessEvent;
+import io.github.resilience4j.retry.event.RetryOnErrorEvent;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+
+/**
+ * Auto-register listeners on all Resilience4j Retry instances and call the custom metric emitter.
+ */
+@Configuration
+public class Resilience4jRetryMetricsAutoConfig {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(Resilience4jRetryMetricsAutoConfig.class);
+
+    private final RetryRegistry retryRegistry;
+    private final CustomRetryMetrics customRetryMetrics;
+
+    @Autowired
+    public Resilience4jRetryMetricsAutoConfig(RetryRegistry retryRegistry,
+                                              CustomRetryMetrics customRetryMetrics) {
+        this.retryRegistry = retryRegistry;
+        this.customRetryMetrics = customRetryMetrics;
+    }
+
+    @PostConstruct
+    public void init() {
+        // Attach to already existing retries
+        retryRegistry.getAllRetries().forEach(this::attachListenersToRetry);
+
+        // Attach to any new Retry entries added after startup
+        retryRegistry.getEventPublisher()
+                .onEntryAdded(event -> {
+                    Retry added = event.getAddedEntry();
+                    LOGGER.info("Retry added to registry: {}", added.getName());
+                    attachListenersToRetry(added);
+                });
+    }
+
+    private void attachListenersToRetry(Retry retry) {
+        // Avoid attaching twice if someone calls this again for same retry:
+        // (Resilience4j's EventPublisher doesn't expose a remove, so be cautious about repeated attachment.)
+        LOGGER.info("Attaching metric listeners for Retry: {}", retry.getName());
+
+        retry.getEventPublisher()
+                // Called each time a retry attempt is scheduled after a failure
+                .onRetry(this::onRetryEvent)
+                // Called when a call succeeds (may have had retry attempts)
+                .onSuccess(this::onSuccessEvent)
+                // Called when a call ends in error (final failure after retries or without retries)
+                .onError(this::onErrorEvent);
+    }
+
+    private void onRetryEvent(RetryOnRetryEvent event) {
+        try {
+            String retryName = event.getName();
+            Throwable t = event.getLastThrowable(); // may be null
+            // Intermediate retry occurrence — count as failed_with_retry attempt
+            customRetryMetrics.incrementCustomRetryCounter(t, retryName, "failed_with_retry");
+        } catch (Exception ex) {
+            LOGGER.warn("Failed to handle onRetry event for retry {}", event.getName(), ex);
+        }
+    }
+
+    private void onSuccessEvent(RetryOnSuccessEvent event) {
+        try {
+            String retryName = event.getName();
+            int attempts = event.getNumberOfRetryAttempts(); // 0 if no retries occurred
+            String kind = attempts > 0 ? "successful_with_retry" : "successful_without_retry";
+            // throwable is not present on success
+            customRetryMetrics.incrementCustomRetryCounter(null, retryName, kind);
+        } catch (Exception ex) {
+            LOGGER.warn("Failed to handle onSuccess event for retry {}", event.getName(), ex);
+        }
+    }
+
+    private void onErrorEvent(RetryOnErrorEvent event) {
+        try {
+            String retryName = event.getName();
+            int attempts = event.getNumberOfRetryAttempts();
+            String kind = attempts > 0 ? "failed_with_retry" : "failed_without_retry";
+            Throwable t = event.getLastThrowable();
+            customRetryMetrics.incrementCustomRetryCounter(t, retryName, kind);
+        } catch (Exception ex) {
+            LOGGER.warn("Failed to handle onError event for retry {}", event.getName(), ex);
+        }
+    }
+}
+
+
+Notes & cautions
+
+No double-counting — because we emit a custom metric name cfm_retry_calls_total via CustomRetryMetrics, this will not duplicate builtin resilience4j_* metrics. If you later decide to enable resilience4j-micrometer, keep the metric names different (as you already planned).
+
+Cardinality — the CustomRetryMetrics class you already have adds tags like className and methodName. That can produce high cardinality (lots of series). If you expect many unique methods/classes, consider removing those tags or limiting them (e.g. only include className when it’s a small, known set).
+
+Idempotency — attachListenersToRetry(...) should be run once per Retry. The posted code calls it for existing retries and for onEntryAdded. Be careful not to call init() twice or to re-create the same registry repeatedly.
+
+Testing:
+
+Deploy the code and generate retry activity (temporary downstream failures or run repeated failing requests).
+
+Confirm /actuator/prometheus contains cfm_retry_calls_total{ name="dbRetry", kind="failed_with_retry", ... } lines.
+
+In Prometheus UI, run increase(cfm_retry_calls_total[5m]) to confirm counts.
+
+Resilience4j version — the above code uses the typical event methods .onRetry(...), .onSuccess(...), .onError(...) which exist in Resilience4j 1.x series. If you run into compilation issues, let me know your resilience4j version and I’ll adapt the imports/signatures.
+
+How to test quickly
+
+Deploy service, ensure /actuator/prometheus contains cfm_retry_calls_total after you trigger retries.
+
+From Prometheus host:

@@ -1,0 +1,12 @@
+public CFMDataEntity saveEntityDecorated(CFMDataEntity entity) {
+        // Order matters: withRetry().withCircuitBreaker(cb)
+        // This will cause Retry to run first, then CB sees the final outcome as one call.
+        Supplier<CFMDataEntity> decorated = Decorators.ofSupplier(() -> saveEntity(entity))
+                                                      .withRetry(dbRetry)         // retry first
+                                                      .withCircuitBreaker(cb)     // CB sees one final result
+                                                      .decorate();
+
+        return Try.ofSupplier(decorated)
+                  .recover(ex -> fallbackSaveEntity(entity, ex)) // fallback on overall failure
+                  .get();
+    }

@@ -1,0 +1,126 @@
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+function startPayment(orderId, amount, key) {
+    var options = {
+        "key": key,
+        "amount": amount,
+        "currency": "INR",
+        "name": "My Company",
+        "description": "Test Transaction",
+        "order_id": orderId,
+        "handler": function (response){
+            // Call backend API to verify
+            fetch("/api/payment/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: razorpayOrderId=${response.razorpay_order_id}&razorpayPaymentId=${response.razorpay_payment_id}&razorpaySignature=${response.razorpay_signature}
+            }).then(res => res.text()).then…
+ Backend generates Razorpay order → returns orderId + key.
+ Frontend calls Razorpay Checkout with the orderId.
+ Razorpay calls handler function after payment success.
+ Backend Verify API validates signature to ensure payment authenticity.
+{
+  "info": {
+    "name": "Razorpay Payment API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Order",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/payment/create-order?amount=500&currency=INR&receipt=rcpt1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "payment", "create-order"],
+          "query": [
+            { "key": "amount", "value": "500" },
+            { "key": "currency", "value": "INR" },
+            { "key": "receipt", "value": "rcpt1" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Verify Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "razorpayOrderId", "value": "" },
+            { "key": "razorpayPaymentId", "value": "" },
+            { "key": "razorpaySignature", "value": "" }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/payment/verify",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "payment", "verify"]
+        }
+      }
+    }
+  ]
+}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+async function startPayment() {
+    // Step 1: Call backend to create order
+    const response = await fetch("http://localhost:8080/api/payment/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 500, currency: "INR", receipt: "receipt#123" })
+    });
+    const order = await response.json();
+    console.log("Order:", order);
+
+    // Step 2: Open Razorpay Checkout
+    const options = {
+        "key": "rzp_test_xxxxxxxxx",   // from application.properties
+        "amount": order.amount,        // in paise
+        "currency": order.currency,
+        "name": "My Shop",
+        "description": "Test Transaction",
+        "order_id": order.id,          // order_id from backend
+        "handler": async function (response) {
+            // Step 3: Verify payment signature on backend
+            const verifyRes = await fetch("http://localhost:8080/api/payment/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(response)
+            });
+            const verifyMsg = await verifyRes.text();
+            alert(verifyMsg);
+        },
+        "prefill": {
+            "name": "Test User",
+            "email": "test@example.com",
+            "contact": "9999999999"
+        },
+        "theme": { "color": "#3399cc" }
+    };
+    const rzp = new Razorpay(options);
+    rzp.open();
+}
+</script>
+
+<button onclick="startPayment()">Pay ₹5</button>
+Flow Recap
+
+User clicks Pay → Frontend calls /create-order.
+
+Backend creates Razorpay order → returns order_id.
+
+Frontend opens Razorpay Checkout UI (user picks card/UPI/netbanking).
+
+Razorpay sends back payment_id + order_id + signature.
+
+Frontend calls /verify → Backend validates signature with secret key.

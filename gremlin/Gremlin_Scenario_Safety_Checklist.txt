@@ -1,0 +1,39 @@
+Gremlin Scenario Safety Checklist
+
+Pre-checks
+
+ Blast Radius – Start small. Target 1 host only (not all) in your first run.
+ Gremlin Agent – Verify all target hosts show as Healthy in Gremlin (gremlin check).
+ Permissions – Ensure you have rollback rights and access to monitoring dashboards (Grafana, Prometheus, etc.).
+ Change Window – Run during a controlled window (non-peak hours if this is first-time testing).
+
+Health Checks
+Add Health Checks inside your Scenario before running:
+
+API endpoint health (e.g., /health, /status)
+Database connection test
+Application logs or error rate check
+Alerting system (Slack/Email/PagerDuty integration if available)
+
+This ensures the scenario auto-stops if critical alarms trigger.
+
+During Execution
+Monitor live metrics – CPU, memory, DB response time, application latency.
+
+ Pause/Stop option ready – Keep Gremlin console open in case you need to halt the experiment.
+ Observe fallback mechanisms – Does your app retry, use cache, or fail gracefully under latency?
+
+Post-checks
+Verify the system recovered after the attack stopped.
+
+ Check logs and monitoring dashboards for anomalies.
+ Document results (latency impact, time to recovery, unexpected errors).
+ Decide whether to expand blast radius (e.g., 2 hosts, then full cluster) for future runs.
+
+Rollback / Safety Net
+Have a manual stop plan (Gremlin → “Halt All Attacks” button).
+
+Have a system restart / failover procedure documented if something gets stuck.
+
+Best practice:
+Always run your first Latency experiment with a short duration (e.g., 1 min) before trying 5–10 min attacks.

@@ -1,0 +1,30 @@
+Zoho - BACKUP VERIFICATION CODES
+
+
+Points to note
+--------------
+# Each code can be used only once.
+# Do not share these codes with anyone.
+# If you have used up all your codes or lost them, you can always generate a new set of codes.
+# Whenever you generate a new set of codes, the old unused codes will become invalid.
+
+
+Generated codes
+---------------
+Username: srikanth.mamillapali@dexian.com
+Generated from: India DC - (https://accounts.zoho.in)
+Generated on: Feb 5, 2026 22:49 (GMT +05:30)
+
+
+ 1. 0fa5 c97t e7my
+ 2. cih5 96fr 228l
+ 3. cn32 bd81 s52q
+ 4. q7nz x8qs 6zos
+ 5. lov0 hvhu t0bp
+
+
+Help article links
+------------------
+
+# How to recover your account using these codes: https://zurl.to/mfa_enfor_bvc_rec
+# How to generate new codes: https://zurl.to/mfa_enfor_bvc_gen

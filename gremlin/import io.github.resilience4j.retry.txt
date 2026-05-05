@@ -1,0 +1,87 @@
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
+import io.github.resilience4j.retry.event.RetryOnErrorEvent;
+import io.github.resilience4j.retry.event.RetryOnSuccessEvent;
+import io.github.resilience4j.retry.event.RetryEvent;
+import io.vavr.control.Try;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class MyService {
+
+    private final Retry myServiceRetry;
+
+    // Equivalent to your exhausted flag
+    private final AtomicBoolean exhaustedFlag = new AtomicBoolean(false);
+
+    public <T> T executeWithRetry(RetryCallback<T> retryCallback) {
+
+        // Reset exhaustion flag before execution
+        exhaustedFlag.set(false);
+
+        // Register event listeners (only once)
+        myServiceRetry.getEventPublisher()
+                .onError(event -> {
+                    // If max attempts reached, mark exhausted
+                    if (event.getNumberOfRetryAttempts() >= myServiceRetry.getRetryConfig().getMaxAttempts() - 1) {
+                        exhaustedFlag.set(true);
+                        incrementCounter("retry.template.exhausted.counter", event.getLastThrowable());
+                    }
+                })
+                .onSuccess(event -> {
+                    if (event.getNumberOfRetryAttempts() > 0) {
+                        incrementCounter("retry.template.succeeded.counter", event.getLastThrowable());
+                    }
+                });
+
+        // Run with retry
+        return Try.ofSupplier(Retry.decorateSupplier(myServiceRetry, retryCallback::doWithRetry))
+                .recover(throwable -> {
+                    // Fallback handling
+                    log.error("All retries failed: {}", throwable.getMessage());
+                    return null;
+                })
+                .get();
+    }
+
+    // Mimics your isExhausted method
+    private boolean isExhausted() {
+        return exhaustedFlag.get();
+    }
+
+    // Mimics your incrementCounter method
+    private void incrementCounter(String counterName, Throwable throwable) {
+        log.info("Counter [{}] incremented due to {}", counterName,
+                throwable != null ? throwable.getMessage() : "no error");
+    }
+
+    // Functional interface for retry callbacks
+    @FunctionalInterface
+    public interface RetryCallback<T> {
+        T doWithRetry();
+    }
+}
+
+@Configuration
+class RetryConfigBean {
+
+    @Bean
+    public Retry myServiceRetry() {
+        RetryConfig config = RetryConfig.custom()
+                .maxAttempts(3)
+                .waitDuration(Duration.ofSeconds(1))
+                .retryExceptions(RuntimeException.class)
+                .build();
+        return RetryRegistry.of(config).retry("myServiceRetry");
+    }
+}

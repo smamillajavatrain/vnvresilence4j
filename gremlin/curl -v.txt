@@ -1,0 +1,5 @@
+curl -v \
+--cacert /apps/res/prometheus/prometheus-2.19.0.linux-amd64/secrets/2025/DTCCCORPROOTCAR3.crt \
+--cert /apps/res/prometheus/prometheus-2.19.0.linux-amd64/secrets/2025/prometheus.res.appdev.dtcc.crt \
+--key /apps/res/prometheus/prometheus-2.19.0.linux-amd64/secrets/2025/nopass.key \
+-X GET https://your-api-url
